@@ -1,0 +1,689 @@
+/* ============================================================
+   归园 · 南山茅舍  —— 界面样式
+   宣纸 + 墨 + 一点朱砂。面板用宣纸色，不用高饱和色块。
+   文字一律不加彩色底块：靠纸色和墨色本身的层次。
+   ============================================================ */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: #16130f;
+  overflow: hidden;
+  /* 楷体走系统字体，不下载任何字体文件 */
+  font-family: "STKaiti", "KaiTi", "楷体", "Microsoft YaHei", "PingFang SC", serif;
+  color: #2b2520;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#wrap {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* stage 尺寸由 JS 对齐到画布实际显示大小，UI 才能精确压在画面上 */
+#stage { position: relative; }
+#game { display: block; max-width: 100vw; max-height: 100vh; }
+
+#ui {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+}
+#ui .hide { display: none !important; }
+
+/* ---------------- 宣纸面板 ---------------- */
+.paper {
+  position: absolute;
+  background:
+    linear-gradient(180deg, rgba(255,252,243,.97), rgba(243,236,219,.97));
+  border: 1px solid rgba(80,66,50,.34);
+  border-radius: 3px;
+  box-shadow: 0 2px 10px rgba(30,24,16,.30);
+  padding: 1.1% 1.5%;
+  line-height: 1.5;
+}
+.paper::after {           /* 纸纤维的极淡横纹 */
+  content: "";
+  position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+  background: repeating-linear-gradient(0deg, rgba(120,100,70,.045) 0 1px, transparent 1px 4px);
+  pointer-events: none;
+  border-radius: 3px;
+}
+
+/* ---------------- HUD ---------------- */
+#hud .tl { top: 2.2%; left: 2.2%; min-width: 9.2%; }
+/* 注意：flex 的 gap 是 Chrome 84 才有的，基线 61 上整条声明直接作废 ——
+   钱和数字会挤成一团、器物架 7 个格子会贴死，而且不报任何错。
+   所以间距一律用相邻兄弟选择器 + margin 写。 */
+#hud .tr { top: 2.2%; right: 2.2%; display: flex; align-items: baseline; }
+#hud .tr .coin { margin-right: .5em; }
+
+#hud .row1 { display: flex; align-items: baseline; }
+#hud .row1 .lbl { margin-left: .25em; }
+#hud .day { font-size: 2.5em; font-weight: bold; color: #2b2520; line-height: 1; }
+#hud .lbl { font-size: 1.05em; color: #6b5c48; }
+#hud .row2 { font-size: 1.35em; color: #7a5a2e; letter-spacing: .18em; margin-top: .1em; }
+#hud .row3 { font-size: 1.05em; color: #6b5c48; font-variant-numeric: tabular-nums; }
+/* 节气：一年里最要紧的一行，压在时钟下面 */
+#hud .row5 {
+  font-size: 1.05em; color: #6b5638; margin-top: .3em;
+  letter-spacing: .12em;
+}
+#hud .row5 em {
+  font-style: normal; font-size: .72em; color: #9a8460;
+  letter-spacing: .04em; margin-left: .3em;
+}
+
+#hud .row4 {
+  font-size: .95em; color: #8a7350; margin-top: .25em;
+  padding-top: .25em; border-top: 1px solid rgba(120,100,70,.22);
+  letter-spacing: .08em;
+}
+/* 酒：没有坛子时 JS 把它 display:none，所以这一行不会常驻占高 */
+#hud .row6 {
+  font-size: .95em; color: #7a5a2e; margin-top: .22em;
+  letter-spacing: .1em;
+}
+
+#hud .coin {
+  display: inline-block;
+  width: 1.55em; height: 1.55em; line-height: 1.5em; text-align: center;
+  background: #b23a2c; color: #fdf6e6;
+  border-radius: 2px; font-size: .95em;
+}
+#hud .tr b { font-size: 1.75em; color: #2b2520; font-variant-numeric: tabular-nums; }
+
+/* 体力：左缘一条墨柱，数字放在柱子上方的小纸片里。
+   原来数字挂在柱子右侧（left:150%），正好压在茅舍上，看着像浮在画里。
+
+   top 不能随手给：HUD 加了「节气」那一行之后纸片长高了，
+   实测（1600x900 窗口，stage 1426x802，第 2 年 HUD 最宽的时候）
+     HUD 纸片      top 18  bottom 214
+     体力数字纸片  top 189 bottom 209   ← 整块压在纸片里，正好盖住地名那一行
+   数字纸片挂在柱顶上方 1.9em（约 28px），所以柱子顶至少要落到 250（≈31.2%）。
+
+   后来 HUD 又加了「酒」那一行（有坛子时才显示），纸片再长 26px，底到 240，
+   而 31.5% 的柱子顶 255、数字顶 225 —— 又压上 15px。
+   这里只量「没酒」那一档是不够的，那正是出问题的那一档。
+   probe-hud.mjs 现在两档都量，有酒时底 240 / 数字顶 225，所以给到 34.8%。
+   改这行之前先跑 dev/probe-hud.mjs。 */
+#stam {
+  position: absolute;
+  left: 2.4%; top: 34.8%;
+  width: 1.15%; height: 44%;
+  background: rgba(246,240,226,.55);
+  border: 1px solid rgba(80,66,50,.36);
+  border-radius: 2px;
+}
+#stam i {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: linear-gradient(180deg, #4a5f47, #2f3d2d);
+  border-radius: 1px;
+  transition: height .25s ease;
+}
+#stam span {
+  /* 从柱子的左缘起算，**不要居中**。
+     柱子只有 1.15% 宽，数字有三十来像素宽，用 translateX(-50%) 居中的话，
+     柱子在 2.4% 处、480 宽的竖屏上是 11.5px，数字一居中左缘就到 -5px ——
+     整个挂在屏幕外头，只看得到半个数字 */
+  position: absolute; left: 0; top: -1.9em;
+  font-size: .95em; color: #2b2520;
+  background: linear-gradient(180deg, rgba(255,252,243,.97), rgba(243,236,219,.97));
+  border: 1px solid rgba(80,66,50,.34);
+  border-radius: 2px;
+  padding: .05em .42em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------- 器物架 ---------------- */
+/* 器物架：压到画面最底一条。架子顶边（实测 y≈993）必须留在田畦近端（872）之下，
+   否则最近一行整个看不见也点不着 —— 这跟浮层吃点击是同一类坑，只是更隐蔽：
+   点得到的那一条还会静默变成「切换器物」。 */
+#tray {
+  position: absolute;
+  left: 50%; bottom: .5%;
+  transform: translateX(-50%);
+  display: flex;
+  background: linear-gradient(180deg, rgba(250,244,230,.95), rgba(238,229,208,.95));
+  border: 1px solid rgba(80,66,50,.40);
+  border-radius: 3px;
+  padding: .35% .45%;
+  box-shadow: 0 3px 14px rgba(30,24,16,.34);
+  pointer-events: auto;
+}
+#tray .slot {
+  position: relative;
+  min-width: 3.7em;
+  padding: .22em .38em .2em;
+  text-align: center;
+  border: 1px solid rgba(90,74,54,.30);
+  border-radius: 2px;
+  background: rgba(255,252,244,.7);
+  cursor: pointer;
+  line-height: 1.2;
+}
+/* 见上面 HUD 那段说明：flex gap 在基线上不作数，器物架的间距走这里 */
+#tray .slot + .slot { margin-left: .4%; }
+#tray .slot i {
+  display: block;
+  font-style: normal;
+  font-size: .74em;
+  color: #8a7350;
+}
+#tray .slot b { display: block; font-size: 1.06em; font-weight: normal; color: #2b2520; }
+#tray .slot u {
+  display: block;
+  text-decoration: none;
+  font-size: .74em;
+  color: #6b5c48;
+  min-height: 1em;
+}
+#tray .slot.on {
+  background: #f2e6cc;
+  border-color: #8a5a2e;
+  box-shadow: 0 0 0 1px rgba(138,90,46,.35);
+}
+#tray .slot.on b { color: #7a4a1e; }
+
+/* 按键提示：放左下角，避开居中的器物架
+
+   max-width 是这一行的真限制，不是「到器物架还差多少」。实测（1600x900 窗口）
+     「WASD 走动　1-7 器物　E 互动　Tab 行囊　V 诗册　M 静音」 宽 371px
+     26% 上限 = 371px —— 正好卡死，于是折成两行，第二行贴着画面底边
+     而 #keys 右沿 478、#tray 左沿 574，中间还有 96px 空着
+   所以先放宽到 28%（399px），再谈砍字。改这行之前跑 dev/probe-keys.mjs，
+   它把几种候选写法都量一遍，比猜哪几个字能省靠谱。
+
+     加了 O 出货之后又量了一次：现在这一行要 380px，28% 装得下但右边只剩
+     十几像素，于是再放到 30%（426px）—— #keys 右沿会到 562，离 #tray 左沿
+     574 还有 12px。够用，但再加键就得重新量。 */
+#keys {
+  position: absolute;
+  left: 2.2%; bottom: 2.2%;
+  max-width: 30%;
+  font-size: .88em;
+  line-height: 1.55;
+  color: #ded3ba;
+  text-shadow: 0 1px 3px rgba(0,0,0,.85);
+}
+
+/* ---------------- 浮字 ---------------- */
+#toast {
+  position: absolute;
+  left: 50%; top: 12%;
+  transform: translateX(-50%) translateY(-8px);
+  max-width: 70%;
+  padding: .5em 1.1em;
+  background: rgba(28,24,18,.78);
+  color: #f2e8d0;
+  border-radius: 2px;
+  border-left: 3px solid #b23a2c;
+  font-size: 1.25em;
+  opacity: 0;
+  transition: opacity .25s ease, transform .25s ease;
+  text-align: center;
+}
+#toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* 交互提示：底图两张都是浅色的，浅字压在上面基本看不见，
+   所以给一枚淡墨底衬 —— 换到哪张图都读得清。 */
+#hint {
+  position: absolute;
+  left: 50%; bottom: 12.5%;
+  transform: translateX(-50%);
+  font-size: 1.15em;
+  color: #f0e6cc;
+  background: rgba(38,32,26,.72);
+  padding: .28em .9em;
+  border-radius: 2px;
+  text-shadow: 0 1px 3px rgba(0,0,0,.6);
+  opacity: 0;
+  transition: opacity .2s ease;
+  white-space: nowrap;
+}
+#hint.on { opacity: 1; }
+
+/* ---------------- 浮层 ---------------- */
+.overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(22,18,13,.58);
+  pointer-events: auto;
+  z-index: 20;
+}
+
+/* 朱砂印：按钮 */
+.seal {
+  font-family: inherit;
+  background: #b23a2c;
+  color: #fdf3e0;
+  border: none;
+  border-radius: 2px;
+  padding: .5em 1.15em;
+  font-size: 1.3em;
+  letter-spacing: .16em;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(30,10,6,.4);
+}
+.seal:hover { background: #c2452f; }
+.seal:active { transform: translateY(1px); }
+.seal.ghost { background: transparent; color: #b23a2c; border: 1px solid #b23a2c; }
+.seal.ghost:hover { background: rgba(178,58,44,.10); }
+.seal.big { font-size: 1.7em; padding: .55em 1.5em; }
+
+/* 说话 */
+#dlg .dlg {
+  position: relative;
+  width: 62%;
+  padding: 2.4% 2.8%;
+}
+#dlg .dlg-name {
+  font-size: 1.9em;
+  color: #7a4a1e;
+  letter-spacing: .1em;
+  margin-bottom: .35em;
+}
+#dlg .dlg-text { font-size: 1.4em; line-height: 1.85; color: #2b2520; }
+#dlg .dlg-from {
+  margin-top: .7em;
+  font-size: .98em;
+  color: #8a7350;
+}
+/* 送酒：不是按钮，是对话卡上可以点的一行。
+   描边 + 淡底让它看着能点，但不用按钮的实心色 —— 那是主角动作，
+   这里只是把手里那坛递出去 */
+#dlg .dlg-act {
+  display: inline-block;
+  margin-top: .9em; padding: .42em 1.1em;
+  font-size: 1em; color: #6b4f22; letter-spacing: .1em;
+  border: 1px solid rgba(150,116,60,.55);
+  border-radius: 2px;
+  background: rgba(232,216,180,.34);
+  cursor: pointer;
+}
+#dlg .dlg-act:hover { background: rgba(232,216,180,.62); }
+/* 两行之间那一行的间距走相邻兄弟选择器 + margin ——
+   flex gap 在这条基线上不作数（#tray 那次已经踩过）。
+   两行要排在同一个左边线上，所以第二行的 margin-left 跟着第一行走 */
+#dlg .dlg-act + .dlg-act { margin-left: .8em; }
+#dlg .seal { position: absolute; right: 2.4%; bottom: 1.8%; }
+
+/* 杂货铺 */
+#sh .shop { position: relative; width: 62%; padding: 2.4% 3%; }
+#sh .sh-name {
+  font-size: 1.5em; color: #7a4a1e; letter-spacing: .1em;
+  padding-bottom: .5em; margin-bottom: .7em;
+  border-bottom: 1px solid rgba(120,100,70,.25);
+}
+/* 用 flex 不用 grid：grid 的 gap 要 Chrome 66，而基线是 61 */
+#sh .sh-list { display: flex; flex-wrap: wrap; }
+/* 本旬新到。轮换**不收走任何一样东西** —— 这一块只是把最近进来的几样
+   提到最上面标出来，底下那张表还是全的 */
+#sh .sh-new-h {
+  margin: .1em 0 .45em; padding-bottom: .35em;
+  font-size: 1em; letter-spacing: .25em; color: #7a4a1e;
+  border-bottom: 1px solid rgba(120,100,70,.25);
+}
+#sh .sh-new { margin-bottom: .8em; }
+/* chip 之间靠 margin 隔开，不用 gap —— flex/grid 的 gap 不是每处都稳 */
+#sh .sh-new .chip { display: inline-block; margin: 0 .5em .4em 0; }
+#sh .sh-new .chip:last-child { margin-right: 0; }
+#sh .goods.fresh { border-color: #8a5a2e; background: #f6ecd8; }
+#sh .goods .tag {
+  margin-left: .5em; padding: 0 .35em;
+  font-size: .62em; letter-spacing: .05em; vertical-align: .18em;
+  color: #f0e2c4; background: #8a5a2e; border-radius: 1px;
+}
+/* 货单从十一格加到十五格（多了鸡舍/水渠四格）之后，整块比视口还高：
+   .overlay 是居中 flex，面板比容器高的时候**上沿顶出 y=0**，
+   头两行直接看不见，而画面上只是「第一格好像空着」。
+   限高 + 自己滚。给不写 max-height 的话，多加两格货又是同一个症状 */
+#sh .sh-list { max-height: 72vh; overflow-y: auto; }
+#sh .goods {
+  display: block; box-sizing: border-box;
+  width: calc(50% - .35em); margin-bottom: .7em;
+  padding: .6em .8em; cursor: pointer;
+  border: 1px solid rgba(90,74,54,.26); border-radius: 2px;
+  background: rgba(255,252,244,.62);
+}
+#sh .goods:nth-child(odd) { margin-right: .7em; }
+#sh .goods:hover { background: #f2e6cc; border-color: #8a5a2e; }
+#sh .goods b { display: block; font-size: 1.12em; font-weight: normal; color: #2b2520; }
+#sh .goods i { display: block; font-style: normal; font-size: .84em; color: #8a7350; margin-top: .12em; }
+#sh .goods u {
+  display: block; text-decoration: none; font-size: .92em;
+  color: #7a4a1e; margin-top: .3em;
+}
+#sh .goods.owned { opacity: .5; cursor: default; }
+#sh .goods.owned u { color: #6b5c48; }
+#sh .sh-tip { margin-top: 1em; font-size: .9em; color: #8a7350; }
+#sh .seal { position: absolute; right: 3%; bottom: 2%; }
+
+/* 诗册：两栏，句子在上、出处和日子在下。
+   不排「未得 XXX」占位 —— 诗册是收来的东西，不是待办清单。
+   用 flex 不用 grid（grid 的 gap 要 Chrome 66，基线是 61）。 */
+#al .album { position: relative; width: 74%; max-height: 80%; padding: 2.4% 3% 3%; }
+
+/* ---------------- 灶上 ----------------
+   配方的三栏要各自占住：名字左边钉住、原料那一栏允许换行、价钱右边对齐。
+   原料文字长度差很多（「黍 3/3」和「山菌 1/1　野莓 1/1」），
+   不给中间那栏留宽度的话，长的那几条会顶着价钱跑。 */
+#st .stove { position: relative; width: 78%; max-width: 760px; padding: 2.2% 2.6% 2.6%; }
+#st .st-list { margin: 1em 0 .4em; }
+#st .rec {
+  display: flex; align-items: baseline;
+  padding: .5em .7em;
+  border-bottom: 1px solid rgba(120,100,70,.18);
+  cursor: pointer;
+}
+#st .rec:last-child { border-bottom: 0; }
+#st .rec:hover { background: rgba(236,220,184,.5); }
+#st .rec b { flex: 0 0 5.2em; font-weight: 600; color: #2b2520; font-size: 1.12em; }
+/* 相邻兄弟选择器 + margin，不用 gap —— flex 的 gap 要 Chrome 84 */
+#st .rec i { flex: 1 1 auto; font-style: normal; font-size: .95em; color: #6b5c48; }
+#st .rec u { flex: 0 0 5.4em; text-align: right; text-decoration: none; font-size: .95em; color: #7a5a2e; }
+#st .rec.off { cursor: default; opacity: .48; }
+#st .rec.off:hover { background: none; }
+#st .rec.off i { color: #a2907a; }
+
+/* 「收灶归家」不是收尾按钮，是一条出路。
+   门口 E 只干一件事：今天动得了灶就开灶，动不了才归家。
+   于是手里只要还剩一坛酒（酒能酿醋），门口就永远回不了家 ——
+   玩家要么把留给邻翁的酒白白倒进醋缸，要么卡在门口过不了夜。
+   这个按钮给的就是那条出路：不动灶也行，收了灶直接回屋。 */
+#st .st-go {
+  margin-top: 1em; padding: .42em 1.1em;
+  font: inherit; font-size: .96em; letter-spacing: .18em;
+  color: #6b4a28; background: rgba(236,220,184,.6);
+  border: 1px solid rgba(138,90,46,.5); border-radius: 2px;
+  cursor: pointer;
+}
+#st .st-go:hover { background: #f2e6cc; border-color: #8a5a2e; }
+
+/* ---------------- 出货箱 ----------------
+   两栏：左边箱里、右边手上。行高用相邻兄弟选择器 + margin 拉开，
+   不用 gap（flex 的 gap 要 Chrome 84，基线是 61）。
+   两栏各自独立滚动：手上可能同时有二十来样，右边滚起来不能把左边顶走。 */
+#bx .bx { position: relative; width: 80%; max-width: 820px; padding: 2.2% 2.6% 2.8%; }
+#bx .bx-cols { display: flex; margin: 1em 0 .3em; }
+#bx .bx-col { flex: 1 1 0; min-width: 0; }
+#bx .bx-col + .bx-col { margin-left: 1.6em; }
+#bx .bx-hd { font-size: 1.05em; color: #2b2520; letter-spacing: .3em; margin-bottom: .3em; }
+#bx .bx-list { max-height: 46vh; overflow-y: auto; border-top: 1px solid rgba(120,100,70,.22); }
+#bx .bxl, #bx .bxh {
+  display: flex; align-items: baseline;
+  padding: .42em .5em;
+  border-bottom: 1px solid rgba(120,100,70,.13);
+  cursor: pointer;
+}
+#bx .bxl:hover, #bx .bxh:hover { background: rgba(236,220,184,.5); }
+#bx .bxl b, #bx .bxh b { flex: 0 0 4.6em; font-weight: 600; color: #2b2520; font-size: 1.05em; }
+#bx .bxl i, #bx .bxh i { flex: 1 1 auto; font-style: normal; font-size: .92em; color: #6b5c48; }
+#bx .bxl u, #bx .bxh u { flex: 0 0 7.2em; text-align: right; text-decoration: none; font-size: .86em; color: #8a7350; }
+#bx .bxh.no, #bx .bxh.no:hover { cursor: default; background: none; opacity: .55; }
+#bx .bxnone { padding: .9em .5em; font-size: .95em; color: #a2907a; }
+#bx #bx-sum { margin-top: 1em; color: #7a5a2e; }
+
+/* ---------------- 行囊 ----------------
+   格子画在 canvas 上，所以这里的 padding 是用来把 canvas 摆正的，
+   格子间距在 JS 里算 —— 一格一个 DOM 的话命中判定要写八遍。 */
+#bg .bag { position: relative; width: auto; padding: 2.2% 2.4% 2.6%; text-align: center; }
+#bg #bg-cv { display: block; }
+#bg .bg-tip {
+  min-height: 3.4em; margin: .9em .4em .2em;
+  font-size: 1em; line-height: 1.7; color: #4a4136; text-align: left;
+}
+#bg .bg-tip b { color: #2b2520; font-weight: 600; }
+#bg .bg-tip i { font-style: normal; color: #8a7350; }
+#al .al-list {
+  display: flex; flex-wrap: wrap; align-items: flex-start;
+  max-height: 60vh; overflow-y: auto; padding-right: .6em;
+}
+#al .al-item {
+  box-sizing: border-box;
+  width: calc(50% - .7em); margin-bottom: 1.1em;
+}
+#al .al-item:nth-child(odd) { margin-right: .7em; }
+#al .al-v { font-size: 1.18em; line-height: 1.75; color: #2b2520; }
+#al .al-f { margin-top: .12em; font-size: .88em; color: #8a7350; }
+#al .al-empty { width: 100%; font-size: 1.1em; color: #6b5c48; }
+#al .al-foot { width: 100%; margin-top: .3em; font-size: .92em; color: #7a4a1e; }
+/* 见闻（图鉴）那一页。
+   .dx-g 整块占满一行，.dx-row 在里头自己再开一个两列的 flex ——
+   这样 .al-item 的 :nth-child(odd) 在每一路里都从第一行重新数。
+   把组标题直接塞进 .al-list 的话，后面每一行左右两栏就整体错开一列。 */
+#al .dx-g { width: 100%; }
+#al .dx-h {
+  width: 100%; margin: .2em 0 .7em; padding-left: .1em;
+  font-size: 1.02em; letter-spacing: .35em; color: #6b5c48;
+  border-bottom: 1px solid rgba(138,115,80,.32);
+}
+#al .dx-row { display: flex; flex-wrap: wrap; align-items: flex-start; }
+#al .dx-d { margin-top: .18em; font-size: .9em; line-height: 1.7; color: #5c5040; }
+#al .al-empty + .al-foot { margin-top: 1.1em; }
+/* 墙上那一页的挂架（东轩二级才有）。图标是**那一味自己的**图，不是文字。
+   摆在诗联上面，所以第一条不用再压上边距 */
+#al .wl-h {
+  width: 100%; margin: 0 0 .5em;
+  font-size: 1em; letter-spacing: .5em; color: #6b5c48;
+  border-bottom: 1px solid rgba(138,115,80,.32);
+}
+#al #wl-cv { display: block; margin: 0 0 1.1em; }
+/* 农时：上半「今天有什么讲究」，下半「二十四节气」。
+   两块之间那道横线以下才是全年表 —— 上面是今天的事，下面是一年的事，
+   混在一起就分不清哪一句是「今天」的 */
+#al .fm-h {
+  width: 100%; margin: 0 0 .6em;
+  font-size: 1em; letter-spacing: .5em; color: #6b5c48;
+  border-bottom: 1px solid rgba(138,115,80,.32);
+}
+#al .fm-today { width: 100%; margin-bottom: 1.3em; }
+#al .fm-d { font-size: 1.06em; color: #2b2520; margin-bottom: .5em; }
+#al .fm-w { position: relative; padding: .2em 0 .2em 1.1em; font-size: 1em; line-height: 1.7; color: #4a4136; }
+#al .fm-w:before { content: ''; position: absolute; left: .15em; top: .95em;
+  width: .32em; height: .32em; border-radius: 50%; background: #8a7350; }
+#al .fm-w u { margin-left: .6em; font-size: .82em; text-decoration: none; color: #8a7350; }
+#al .fm-s { margin-top: .7em; font-size: 1em; color: #7a4a1e; }
+#al .fm-s2 { margin-top: .18em; font-size: .9em; color: #5c5040; }
+#al .fm-g { width: 100%; }
+/* 一节气一行。两列一行，窄屏才不至于一列拉到二十四个 */
+#al .fm-r {
+  display: inline-block; box-sizing: border-box;
+  width: 50%; padding: .5em .7em .55em 0; margin-bottom: .35em;
+  vertical-align: top; border-top: 1px solid rgba(138,115,80,.18);
+}
+#al .fm-r:nth-child(odd) { padding-right: .2em; margin-right: .6em; }
+#al .fm-r:nth-child(even) { width: calc(50% - .6em); }
+/* 今天那一行要看得出来 —— 一天只到得了这一行 */
+#al .fm-r.on { background: #f3e9d3; border-top-color: #8a5a2e; }
+#al .fm-n { font-size: 1.06em; color: #2b2520; }
+#al .fm-p { font-size: .88em; line-height: 1.6; color: #8a7350; }
+#al .fm-rg { margin-top: .2em; font-size: .86em; color: #7a4a1e; }
+/* 墙上：点亮的句子按点亮的先后竖排，像一副中堂。
+   没点上的留一格空格 —— **用空格而不是「×」**：空格是一块待写的地方，
+   叉是「没有」，两样意思不一样，而这一页要的是前者。 */
+#al .wl {
+  display: flex; flex-wrap: wrap; align-items: flex-start;
+  width: 100%; margin-bottom: .4em;
+}
+#al .wl-on {
+  box-sizing: border-box; width: 15%; min-height: 4.4em;
+  margin: 0 1% .7em 0; padding: .3em .2em;
+  border-left: 2px solid rgba(122,74,30,.42);
+}
+#al .wl-v { font-size: 1.02em; line-height: 1.6; color: #2b2520; }
+#al .wl-f { margin-top: .1em; font-size: .76em; color: #8a7350; }
+#al .wl-off {
+  box-sizing: border-box; width: 15%; min-height: 4.4em;
+  margin: 0 1% .7em 0;
+  border-left: 2px dotted rgba(122,74,30,.26);
+}
+#al .seal { position: absolute; right: 3%; bottom: 2%; }
+
+/* 木箱的两页（仓房给的）。页签跟诗册那套是同一族，
+   但另起一套类名：两处的间距和底色不一样，抄一起改起来更省事 */
+#ch .bx-tabs { margin: -.1em 0 .7em; }
+#ch .bxt {
+  display: inline-block; padding: .2em .85em .18em;
+  font-size: .95em; color: #8a7350; cursor: pointer;
+  border: 1px solid rgba(90,74,54,.26); border-radius: 2px;
+}
+#ch .bxt + .bxt { margin-left: .4em; }
+#ch .bxt.on { color: #2b2520; background: rgba(242,230,204,.85); }
+
+/* 歇脚处那份「往哪儿去」。版式跟木箱同一族，类名另起一套 */
+#rd .rdg {
+  display: flex; align-items: baseline;
+  padding: .3em .1em; cursor: pointer;
+  border-bottom: 1px solid rgba(90,74,54,.14);
+}
+#rd .rdg b { font-size: 1.12em; color: #2b2520; }
+#rd .rdg i { margin-left: .7em; font-size: .9em; color: #6b5c48; font-style: normal; }
+#rd .rdg u {
+  margin-left: auto; text-decoration: none;
+  font-size: .86em; color: #7a4a1e;
+}
+#rd .rdg:hover { background: rgba(242,230,204,.55); }
+
+/* 屋里那四行。跟歇脚处那套同一族，类名另起 */
+#hs .hsr {
+  display: flex; align-items: baseline; flex-wrap: wrap;
+  padding: .34em .1em; cursor: pointer;
+  border-bottom: 1px solid rgba(90,74,54,.14);
+}
+#hs .hsr b { font-size: 1.14em; color: #2b2520; letter-spacing: .06em; }
+#hs .hsr i {
+  margin-left: .8em; font-size: .9em; color: #6b5c48; font-style: normal;
+}
+#hs .hsr s {
+  margin-left: .8em; font-size: .9em; color: #7a4a1e; text-decoration: none;
+}
+#hs .hsr u { margin-left: auto; text-decoration: none; font-size: .84em; color: #a08a6a; }
+#hs .hsr:hover { background: rgba(242,230,204,.55); }
+/* 暗着的那一行：不是没有，是今天不成。字压下去一点，
+   但**不能压到读不出来** —— 一片灰看着像坏了 */
+#hs .hsr.off b { color: #7a6a54; }
+#hs .hsr.off s { color: #8a7350; }
+#hs .hsr.off i { color: #8a7c68; }
+
+/* 诗册 / 行状 两页的切换。间距走相邻兄弟选择器 + margin ——
+   flex gap 在这条基线上不作数（#tray 那次已经踩过）。 */
+#al-tabs { margin: -.2em 0 .9em; }
+#al-tabs .al-tab {
+  display: inline-block; padding: .22em .9em .2em;
+  font-size: .96em; color: #8a7350; cursor: pointer;
+  border: 1px solid rgba(90,74,54,.26); border-radius: 2px;
+}
+#al-tabs .al-tab + .al-tab { margin-left: .45em; }
+#al-tabs .al-tab.on {
+  color: #2b2520; background: rgba(242,230,204,.85);
+  border-color: rgba(122,74,30,.5);
+}
+/* 行状那一页。不用进度条：一门十级，进度条画出来是十格一排的噪，
+   「还差几点到几级」一句话就说清了 */
+#al .sk-item {
+  box-sizing: border-box; width: calc(50% - .7em);
+  margin-bottom: 1.05em; padding-bottom: .8em;
+  border-bottom: 1px solid rgba(90,74,54,.18);
+}
+#al .sk-item:nth-child(odd) { margin-right: .7em; }
+#al .sk-t { font-size: 1.22em; line-height: 1.4; color: #2b2520; }
+#al .sk-t b { font-weight: normal; }
+#al .sk-lv { margin-left: .5em; font-size: .86em; color: #7a4a1e; }
+#al .sk-p { margin-top: .18em; font-size: .86em; color: #6b5c48; line-height: 1.6; }
+#al .sk-bar { margin-top: .1em; font-size: .88em; color: #8a7350; }
+#al .sk-un { margin-top: .3em; font-size: .88em; color: #4a3f33; line-height: 1.6; }
+#al .sk-lock { color: #a99a7c; }
+
+/* 归家 */
+#de .de { position: relative; width: 56%; padding: 2.6% 3%; }
+#de .de-v { font-size: 1.75em; line-height: 1.7; color: #2b2520; }
+#de .de-v2 { margin-top: .35em; font-size: 1.02em; color: #8a7350; }
+#de .de-body { margin-top: 1.1em; font-size: 1.18em; line-height: 1.9; }
+#de .de-body .ln { color: #2b2520; }
+#de .de-body .ln.dim { color: #6b5c48; }
+#de .de-body .ln.gold { color: #7a4a1e; margin-top: .35em; }
+#de .seal { position: absolute; right: 3%; bottom: 2.2%; }
+
+/* 开卷 */
+#title { background: rgba(24,20,15,.78); }
+.titlebox { text-align: center; max-width: 78%; }
+.titlebox h1 {
+  font-size: 4.2em;
+  letter-spacing: .3em;
+  color: #f3e9d2;
+  text-shadow: 0 3px 18px rgba(0,0,0,.8);
+  font-weight: normal;
+}
+.titlebox .sub {
+  margin-top: .3em;
+  font-size: 1.15em;
+  letter-spacing: .3em;
+  color: #c9b489;
+}
+.titlebox .lead {
+  margin: 1.5em 0 1.8em;
+  font-size: 1.5em;
+  line-height: 2;
+  color: #e8dcc0;
+  letter-spacing: .06em;
+}
+.titlebox .btns { display: flex; justify-content: center; }
+.titlebox .btns .seal + .seal { margin-left: 1.2em; }
+/* 三格存档。横着排三张，卡与卡之间靠 margin 隔开（不用 gap）。
+   一格是别人玩了半个月的田，所以每张卡都先写清「那一世的样子」，
+   看着是空的和有货的，进得去也退得回来 */
+#title #slots { display: flex; justify-content: center; align-items: stretch; }
+#title .slot {
+  box-sizing: border-box; width: 17em; margin: 0 .6em; padding: .9em .9em 1em;
+  text-align: left; border: 1px solid rgba(201,180,137,.30); border-radius: 2px;
+  background: rgba(28,24,20,.34);
+  /* 竖排：信息在上，按钮永远贴在卡底。
+     原来卡是普通块：三张被 stretch 成一样高，可内容都顶在上面 ——
+     「续/重来」压在四行信息下面，「入山」紧跟在「空着」后面浮在上面。
+     三格并排摆着，按钮却差了将近一百像素，看着像三张卡没对齐 */
+  display: flex; flex-direction: column;
+}
+#title .sl-n {
+  font-size: .86em; letter-spacing: .3em; color: #a99a7c;
+  padding-bottom: .45em; margin-bottom: .55em;
+  border-bottom: 1px solid rgba(201,180,137,.18);
+}
+/* 1em 而不是 1.12em：「第 1 年 · 第 100 天 · 霜降」比第 1 天那行长两字，
+   1.12em 放不下会折行，断点还随日子数变（第 1 天不断、第 100 天断）——
+   那种毛病没法靠调宽度躲开，只能让这一行短到一定放得下 */
+#title .sl-d { font-size: 1em; color: #f3e9d2; }
+#title .sl-s { margin-top: .3em; font-size: .9em; color: #c9b489; }
+#title .sl-e { font-size: 1.1em; color: #8d8265; }
+#title .sl-bad { font-size: 1.02em; color: #c08a6a; }
+/* margin-top:auto 而不是固定值：按内容高度走，格里有四行信息、
+   有一行、还是只有「空着」，按钮都落在同一条底线上 */
+#title .sl-a { margin-top: auto; padding-top: .9em; }
+/* 卡里相邻两个按钮靠 margin 隔开 */
+#title .sl-a .seal + .seal { margin-left: .6em; }
+#title .seal.sl-warn { background: #8a3a2a; color: #f6e2cf; }
+.titlebox .tips {
+  margin-top: 2em;
+  font-size: 1em;
+  color: #a99a7c;
+  letter-spacing: .05em;
+}
+
+/* 窄屏：面板收窄，别撑破画面 */
+@media (max-width: 640px) {
+  #keys { display: none; }
+  #tray .slot { min-width: 3.4em; }
+  #tray .slot b { font-size: 1.02em; }
+  .titlebox h1 { font-size: 3em; }
+  .titlebox .lead { font-size: 1.2em; }
+  #dlg .dlg, #de .de { width: 84%; }
+}

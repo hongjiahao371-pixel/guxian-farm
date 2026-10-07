@@ -1,0 +1,17 @@
+# 调试产物与成片，不进代码仓库
+shots/
+video/
+
+# dev/ 下的一次性产物（探针、预览、日志、图片）
+# **dev/*.mjs 本身是入库的** —— 那 39 套验收是这个项目最要紧的部分之一
+dev/_*
+dev/*.log
+dev/*.out
+dev/_fig/
+dev/frames/
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+*.swp
+*~

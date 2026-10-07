@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>归园 · 南山茅舍</title>
+<link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+<div id="wrap">
+<div id="stage">
+  <canvas id="game" width="1920" height="1080"></canvas>
+
+  <div id="ui">
+    <!-- 抬头：日子 / 时辰 / 钟点 -->
+    <div id="hud" class="hide">
+      <div class="paper tl">
+        <div class="row1">
+          <span class="day" id="hud-day">1</span>
+          <span class="lbl">日</span>
+        </div>
+        <div class="row2"><b id="hud-shichen">晨兴</b></div>
+        <div class="row3" id="hud-clock">05:00</div>
+        <div class="row5" id="hud-solar">立春</div>
+        <div class="row4" id="hud-map">南山茅舍</div>
+        <!-- 天气。跟酒那一行一样，晴天就收起来不占位 ——
+             五行是那批旧面板的基准（#stam 的 top 只按五行留了 11px 余量），
+             多常驻一行，左上那张纸片就会压到体力条上 -->
+        <div class="row6" id="hud-weather">晴</div>
+        <!-- 酒。默认 display:none，有坛子才占位 ——
+             常驻一行的话，左上纸片会高出 #stam 顶边 11px 的余量 -->
+        <div class="row6" id="hud-jiu">酒 0</div>
+      </div>
+
+      <!-- 钱 -->
+      <div class="paper tr">
+        <span class="coin">钱</span><b id="hud-gold">500</b>
+      </div>
+
+      <!-- 体力：贴左缘一条墨柱 -->
+      <div id="stam">
+        <i id="hud-stam"></i>
+        <span id="hud-stam-n">100</span>
+      </div>
+
+      <!-- 器物架 -->
+      <div id="tray"></div>
+      <!-- 键位提示压成一行。原来写全称（「换器物」「说话与归家」），加上 V 诗册之后
+           在 max-width 26% 里会折成两行，第二行贴着画面底边。
+           加了 O 出货就得更省着写，加了镐（8）又得再量一次：dev/probe-keys.mjs
+           量的是这一行的实际宽度，超了就先砍字，别靠运气。 -->
+      <!-- E 一个键身上背了五六件事（说话、钓鱼、采集、读碑、捡蛋、造营、开箱、
+           动灶、归家），键位条写不下那些场合，也写不下就没法在这一行做。
+           写「E 互动」—— 它是真的概括，具体是什么看画面下边那一行提示 -->
+      <div id="keys">WASD　1-8 换　E 互动　Tab 行囊　O 出货　V 诗册　M 静音</div>
+
+      <div id="hint"></div>
+      <div id="toast"></div>
+    </div>
+
+    <!-- 说话 -->
+    <div id="dlg" class="overlay hide">
+      <div class="paper dlg">
+        <div class="dlg-name" id="dlg-name">邻翁</div>
+        <div class="dlg-text" id="dlg-text"></div>
+        <div class="dlg-from" id="dlg-from"></div>
+        <!-- 送酒。只有「手里有坛子 + 这个人还肯收」的时候才出现 -->
+        <div class="dlg-act hide" id="dlg-act">把这一缸酒递过去</div>
+        <!-- 交托付。和送酒分成两行：合成一行就得让玩家自己挑，
+             而挑的那件会被藏掉，剩下的那件在场上点不着，看着就是按钮坏了 -->
+        <div class="dlg-act hide" id="dlg-quest"></div>
+        <button class="seal" id="dlg-x">续</button>
+      </div>
+    </div>
+
+    <!-- 杂货铺 -->
+    <div id="sh" class="overlay hide">
+      <div class="paper shop">
+        <div class="sh-name" id="sh-name">墟市老丈的铺子</div>
+        <!-- 本旬新到的那一块。**必须在 #sh-list 外面**：
+             那个列表是 flex 换行 + :nth-child(odd) 分左右两栏的，
+             把标题当它的兄弟节点插进去，后面每一行左右就整体错一列 -->
+        <div id="sh-top"></div>
+        <div class="sh-list" id="sh-list"></div>
+        <div class="sh-tip">点货即买　·　B / Esc 关上</div>
+        <button class="seal" id="sh-x">走</button>
+      </div>
+    </div>
+
+    <!-- 行囊：一整块 canvas 画 8×5 的格子，不是一格一个 DOM。
+         40 个 div 加 40 个小 canvas 反而更慢，而且命中判定要写 40 遍。
+         5 行是加了矿砂之后才有的：31 → 35 样，8×4 只有 32 格，
+         第 33 样开始就静默画不出来（画面上只是少一格，看不出是装不下） -->
+    <div id="bg" class="overlay hide">
+      <div class="paper bag">
+        <div class="sh-name">行 囊</div>
+        <!-- 高度跟着行数走（JS 里的 BG.h 是准的，这里只是首帧的初值） -->
+        <canvas id="bg-cv" width="600" height="494"></canvas>
+        <div class="bg-tip" id="bg-tip"></div>
+        <button class="seal" id="bg-x">收</button>
+      </div>
+    </div>
+
+    <!-- 灶上 -->
+    <div id="st" class="overlay hide">
+      <div class="paper stove">
+        <div class="sh-name">灶 上</div>
+        <div class="st-list" id="st-list"></div>
+        <!-- 这一行跟着灶间走：没砌灶间是一口，砌了是两口三口气 -->
+        <div class="sh-tip" id="st-cap">一口灶一天做一样　·　点一行就动手</div>
+        <button class="st-go" id="st-go">收 灶 归 家</button>
+        <button class="seal" id="st-x">走</button>
+      </div>
+    </div>
+
+    <!-- 出货箱 -->
+    <div id="bx" class="overlay hide">
+      <div class="paper bx">
+        <div class="sh-name">出 货 箱</div>
+        <div class="bx-cols">
+          <div class="bx-col">
+            <div class="bx-hd">箱 里</div>
+            <div class="bx-list" id="bx-bin"></div>
+          </div>
+          <div class="bx-col">
+            <div class="bx-hd">手 上</div>
+            <div class="bx-list" id="bx-hand"></div>
+          </div>
+        </div>
+        <div class="sh-tip" id="bx-sum"></div>
+        <div class="sh-tip">点一下放一份 / 拿回一份　·　按住 Shift 全放 / 全取回</div>
+        <button class="seal" id="bx-x">走</button>
+      </div>
+    </div>
+
+    <!-- 木箱：放着不卖的东西都搁这儿。
+         跟出货箱长得一样是因为它本来就是同一件事的两头 ——
+         出货箱是「放进去过夜换钱」，木箱是「放进去不动它」。
+         两栏一套 CSS，不另起一套，免得以后改版式只改到一边。 -->
+    <div id="ch" class="overlay hide">
+      <div class="paper bx">
+        <div class="sh-name">木 箱</div>
+        <!-- 分两页是仓房（家具）给的：采回来的 / 做出来的。
+             没砌仓房时只有第一页，那一页是全部 —— 页签也一起收起来，
+             不留一个点不动的死页签 -->
+        <div class="bx-tabs" id="ch-tabs"></div>
+        <div class="bx-cols">
+          <div class="bx-col">
+            <div class="bx-hd">箱 里</div>
+            <div class="bx-list" id="ch-in"></div>
+          </div>
+          <div class="bx-col">
+            <div class="bx-hd">手 上</div>
+            <div class="bx-list" id="ch-hand"></div>
+          </div>
+        </div>
+        <div class="sh-tip">搁在这儿的不卖钱　·　什么时候想用什么时候取</div>
+        <div class="sh-tip">点一下放一份 / 取一份　·　按住 Shift 全放 / 全取</div>
+        <button class="seal" id="ch-x">走</button>
+      </div>
+    </div>
+
+    <!-- 诗册。这块纸有两页：诗册记句子，行状记手艺。
+         手艺不单开一个键：键位条只剩 57px 余量（dev/probe-keys.mjs 量过） -->
+    <!-- 歇脚处：「往哪儿去」。样式跟木箱、出货箱同一族（.paper.bx），
+         栏目的类名另起一套 —— 那是「走」，不是「放东西」 -->
+    <div id="rd" class="overlay hide">
+      <div class="paper bx">
+        <div class="sh-name" id="rd-name">歇 脚 处</div>
+        <div class="bx-cols">
+          <div class="bx-col">
+            <div class="bx-hd">往 哪 儿 去</div>
+            <div class="bx-list" id="rd-list"></div>
+          </div>
+        </div>
+        <div class="sh-tip">走过去就落在那边的歇脚处　·　没走过的地方不在上面</div>
+        <button class="seal" id="rd-x">走</button>
+      </div>
+    </div>
+
+    <!-- 屋里：门口按 E 进来。星露谷那个农舍的原样搬法 ——
+         灶 / 木箱 / 诗册 / 床四行，归家（歇了）从「床」那一行走。
+         灶和木箱另有自己的 E 点（站在跟前直接按），
+         这里多这一层是为了让「家里多了什么」有个能看见、能按的落点 -->
+    <div id="hs" class="overlay hide">
+      <div class="paper bx">
+        <div class="sh-name" id="hs-name">屋 里</div>
+        <div class="bx-cols">
+          <div class="bx-col">
+            <div class="bx-hd">家 里</div>
+            <div class="bx-list" id="hs-list"></div>
+          </div>
+        </div>
+        <div class="sh-tip" id="hs-tip">点一行就过去　·　别处按 E 也能直接动灶、开箱</div>
+        <button class="seal" id="hs-x">出</button>
+      </div>
+    </div>
+
+    <div id="al" class="overlay hide">
+      <div class="paper album">
+        <div class="sh-name" id="al-name">诗 册</div>
+        <div id="al-tabs">
+          <div class="al-tab on" data-p="verse">诗 册</div>
+          <div class="al-tab" data-p="skill">行 状</div>
+          <!-- 「农时」：今天有什么讲究 + 二十四节气各能下种什么。
+               那几条规矩在别处各自都判对了，而玩家一条也看不见，
+               除非他正好去做那件事、撞上了才知道 -->
+          <div class="al-tab" data-p="farm">农 时</div>
+          <!-- 「见闻」是图鉴：认出一味就记一笔。页签上带着「见过几种」，
+               不进这一页也知道它不是空的 -->
+          <div class="al-tab" data-p="seen">见 闻</div>
+          <!-- 「墙上」是东轩给的场合。没砌东轩时这一格收起来 ——
+               留一个点得动、点进去写着「还没腾出来」的页签，
+               那看着像有个功能坏了 -->
+          <div class="al-tab" id="al-tab-wall" data-p="wall" style="display:none">墙 上</div>
+        </div>
+        <div class="al-list" id="al-list"></div>
+        <button class="seal" id="al-x">卷</button>
+      </div>
+    </div>
+
+    <!-- 归家 -->
+    <div id="de" class="overlay hide">
+      <div class="paper de">
+        <!-- 书名号由 game.js 统一加，这里不要再包一层，否则结算里会出现「「…」」 -->
+        <div class="de-v"><span class="v"></span></div>
+        <div class="de-v2 v2"></div>
+        <div class="de-body body"></div>
+        <button class="seal" id="de-next">晨兴</button>
+      </div>
+    </div>
+
+    <!-- 开卷 -->
+    <div id="title" class="overlay">
+      <div class="titlebox">
+        <h1>归 园</h1>
+        <div class="sub">南山茅舍</div>
+        <p class="lead">
+          种豆南山下，草盛豆苗稀。<br>
+          晨兴理荒秽，带月荷锄归。
+        </p>
+        <div class="btns" id="slots"></div>
+        <div class="tips">WASD 走动 · 点田畦用器物 · 1-8 换器物 · E 说话 / 捡蛋 / 归家 · Tab 行囊 · O 出货 · V 诗册</div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script src="./js/core.js"></script>
+<script src="./js/field.js"></script>
+<script src="./js/ink.js"></script>
+<script src="./js/data.js"></script>
+<script src="./js/game.js"></script>
+<script>
+  // 对话/结算层打开时让开点击；点面板外也能关
+  window.addEventListener('DOMContentLoaded', function () {
+    var dlg = document.getElementById('dlg');
+    document.getElementById('dlg-x').onclick = function () { dlg.classList.add('hide'); };
+    dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.classList.add('hide'); });
+    // 送酒：点对话卡上那一行。e.stopPropagation 是必须的 ——
+    // 上面那条「点卡外空白处就关」的监听在冒泡，
+    // 不拦住的话递完酒，对话卡会顺手自己关掉
+    document.getElementById('dlg-act').onclick = function (e) {
+      e.stopPropagation();
+      FG.giveWine && FG.giveWine();
+    };
+    // 交托付：同上，理由一样
+    document.getElementById('dlg-quest').onclick = function (e) {
+      e.stopPropagation();
+      FG.handQuest && FG.handQuest();
+    };
+    var de = document.getElementById('de');
+    document.getElementById('de-next').onclick = function () {
+      de.classList.add('hide');
+      // 年结面板把按钮改成了「明春」，点下去要回明春而不是普通日子的开头
+      FG.nextDay && FG.nextDay();
+    };
+    // 诗册
+    var al = document.getElementById('al');
+    document.getElementById('al-x').onclick = function () { al.classList.add('hide'); };
+    al.addEventListener('click', function (e) { if (e.target === al) al.classList.add('hide'); });
+    // 两页之间的切换。点标签自己换，**不关面板** ——
+    // 换页要是顺手把面板关了，玩家会以为点错了，等下再开一次
+    var alTabs = document.querySelectorAll('#al-tabs .al-tab');
+    for (var ai = 0; ai < alTabs.length; ai++) {
+      alTabs[ai].onclick = function () { FG.setAlPage(this.getAttribute('data-p')); };
+    }
+    // 行囊
+    var bg = document.getElementById('bg');
+    document.getElementById('bg-x').onclick = function () { bg.classList.add('hide'); };
+    bg.addEventListener('click', function (e) { if (e.target === bg) bg.classList.add('hide'); });
+    // 灶上
+    var st = document.getElementById('st');
+    document.getElementById('st-x').onclick = function () { st.classList.add('hide'); };
+    st.addEventListener('click', function (e) { if (e.target === st) st.classList.add('hide'); });
+  });
+</script>
+</body>
+</html>
