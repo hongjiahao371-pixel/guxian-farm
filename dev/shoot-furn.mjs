@@ -237,7 +237,7 @@ console.log('— 灶：一天两口是真的能点两下 —');
 // 料摆够：豆 8 束能点四次酱
 await ev(`(function(){
   FG.gotoMap('nanshan'); for (var k in FG.state.bag) delete FG.state.bag[k];
-  FG.state.bag.dou=8; FG.state.made=[]; FG.state.made.jiang=0; FG.state.cookN=0; FG.updateHUD(); return 1})()`);
+  FG.state.bag.dou=8; FG.state.made={}; FG.state.made.jiang=0; FG.state.cookN=0; FG.updateHUD(); return 1})()`);
 await standHome();
 await key('e');
 await sleep(450);
@@ -303,7 +303,16 @@ await ev(`FG.nextDay()`);
 await sleep(520);
 ok('过了一天，灶上那两口空出来了', (await ev(`FG.state.cookN`)) === 0 && (await ev(`FG.canCook()`)) === true,
   'cookN=' + await ev(`FG.state.cookN`));
-ok('读档进来也空着（不能靠刷新白嫖一口）', true);
+// 真做满这一天，再刷新并走续档入口；不能用常量 true 代替读档断言。
+await ev(`(function(){
+  var r = FG.RECIPES.filter(function(q){ return q.id === 'jiang'; })[0];
+  FG.cook(r); FG.cook(r);
+})()`);
+await ev(`location.reload()`); await sleep(2600);
+await ev(`FG.startFrom('cont')`); await sleep(400);
+ok('刷新续档后仍是当天做满两口，不能重置料理额度',
+  (await ev(`FG.state.cookN`)) === 2 && (await ev(`FG.canCook()`)) === false,
+  'cookN=' + await ev(`FG.state.cookN`));
 
 console.log('— 买下灶间二级：一天三口 —');
 await openShop();

@@ -26,6 +26,7 @@
     picked: {},                   // 采集点 key -> 哪天长回来（day 号）
     steles: {},                   // 刻石 id -> 读过的日号。读过就是读过，不重置、不长回来
     jiu: 0,                        // 手里的酒（坛）。唯一不进钱的加工品
+    jiuYear: [],                    // 每坛酒酿下的年份，读档时也要保留
     made: {},                      // 灶上做出来的加工品 id -> 份数
     bin: {},
     // 出货箱的品级：0 本色 / 1 好品 / 2 上品。**摆成合法 0，不能 undefined**
@@ -112,13 +113,18 @@
     build: {},             // {ji:0, shui:0} —— FG.BUILD 的下标
     plots: [],             // [row][col] = {tilled, wet, crop, stage}
     player: { x: 900, y: 800, face: 0, walk: 0 },
+    walkTo: null,
+    touchGo: false,
+    weather: null,
     hover: null,
     talkIdx: 0,
     ended: false,
+    dayEnd: null,                  // 已结算、待确认的日结或年结快照；读档只重画，不重算
     started: false,
     todayEarned: 0,
     todayWatered: 0
   };
+  var initialState = JSON.stringify(S);
 
   function curMap() { return FG.mapOf(S.map); }
   function mapNpcs() {
@@ -149,20 +155,65 @@
   FG.SAVE_SLOTS = 3;
   function saveKey(i) { return i ? SAVE_KEY + '_s' + (i + 1) : SAVE_KEY; }
 
+  // 诗句、升级会在动作中途请求保存。等整次动作成功后再落盘，
+  // 避免「背包已收成，地里的熟苗却还在」这种半本账。
+  var saveDepth = 0;
+  function saveAction(action) {
+    var complete = false;
+    saveDepth++;
+    try { var result = action(); complete = true; return result; }
+    finally { saveDepth--; if (complete && !saveDepth) save(); }
+  }
   function save() {
+    if (saveDepth) return;
     try {
       var d = JSON.parse(JSON.stringify(S));
       d.player = { x: S.player.x, y: S.player.y };
       localStorage.setItem(saveKey(S.slot || 0), JSON.stringify(d));
-      FG.audio.play('buy');
     } catch (e) { }
   }
+  function replaceState(d, slot) {
+    var base = JSON.parse(initialState), k;
+    for (k in S) delete S[k];
+    for (k in base) S[k] = d && d[k] !== undefined ? d[k] : base[k];
+    // 槽位由玩家点的那一格决定，不能让存档里的旧 slot 改写目标。
+    S.slot = slot;
+  }
+  function saveObject(d) { return !!d && typeof d === 'object' && !Array.isArray(d); }
+  function saveNumber(n) { return typeof n === 'number' && isFinite(n); }
+  function validSave(d) {
+    if (!saveObject(d) || !saveNumber(d.day) || d.day < 1 || Math.floor(d.day) !== d.day) return false;
+    if (d.player !== undefined && (!saveObject(d.player) || !saveNumber(d.player.x) || !saveNumber(d.player.y))) return false;
+    if (d.min !== undefined && (!saveNumber(d.min) || d.min < FG.DAY.START || d.min > FG.DAY.END)) return false;
+    if (d.plots !== undefined) {
+      if (!Array.isArray(d.plots)) return false;
+      var farm = FG.MAPS.nanshan, r, c, p;
+      if (d.plots.length && d.plots.length !== farm.rows) return false;
+      for (r = 0; r < d.plots.length; r++) {
+        if (!Array.isArray(d.plots[r]) || d.plots[r].length !== farm.cols) return false;
+        for (c = 0; c < d.plots[r].length; c++) {
+          p = d.plots[r][c];
+          if (!saveObject(p) || (p.crop && !C[p.crop]) || !saveNumber(p.stage) || p.stage < 0) return false;
+        }
+      }
+    }
+    if (d.dayEnd !== undefined && d.dayEnd !== null) {
+      var e = d.dayEnd;
+      if (!saveObject(e) || (e.kind !== 'day' && e.kind !== 'year') || e.day !== d.day || !Array.isArray(e.lines)) return false;
+    }
+    return true;
+  }
   function load() {
+    var before = null;
     try {
-      var raw = localStorage.getItem(saveKey(S.slot || 0));
+      var slot = S.slot || 0;
+      var raw = localStorage.getItem(saveKey(slot));
       if (!raw) return false;
       var d = JSON.parse(raw);
-      for (var k in S) if (d[k] !== undefined) S[k] = d[k];
+      if (!validSave(d)) return false;
+      before = JSON.parse(JSON.stringify(S));
+      // 每格缺的旧字段从初始值补，不能继承上一格的酒、人情或年结。
+      replaceState(d, slot);
       // 老存档里没有手艺这本账。不补的话读档玩家看着五门全空 ——
       // 那不是「回到旧版」，是存档坏了
       skillFix();
@@ -180,8 +231,13 @@
       renFix();
       dexFix();
       birthFix();
+      if (!S.book) bookInit();
+      fixDayEnd();
       return true;
-    } catch (e) { return false; }
+    } catch (e) {
+      if (before) replaceState(before, before.slot);
+      return false;
+    }
   }
   /* 看一眼某一格，**不动 S**。标题上要写「第几年第几天、收了多少钱」，
      而写这些得先读档 —— 读档就把现在的局面顶掉了。
@@ -194,6 +250,7 @@
     if (!raw) return null;
     var d;
     try { d = JSON.parse(raw); } catch (e) { return { bad: 1 }; }
+    if (!validSave(d)) return { bad: 1 };
     var album = 0, k;
     for (k in (d.album || {})) if (d.album[k]) album++;
     var dex = 0, c, q;
@@ -1467,6 +1524,7 @@
   // 然后一次扣够体力再一起做。中途体力不够而只做了一半，
   // 玩家的田会留下一半翻了一半没翻，两边都说不通
   function workArea(k, col, row) {
+    return saveAction(function () {
     var cells = gearCells(k, col, row);
     if (!cells.length) return;
     // 藏季：土硬了，锄头下不去。拦在扣体力之前 ——
@@ -1524,6 +1582,7 @@
     // 一生累计：任务要的是「一辈子翻过多少畦」。账本一年一清，拿它算任务
     // 的话翻一次年进度就归零，而那条托付并没有过期
     if (k === 'chu') totalAdd('till', todo.length);
+    });
   }
 
   /* ---------------- 石硐 ----------------
@@ -1707,6 +1766,8 @@
         || !document.getElementById('bx').classList.contains('hide')
         || !document.getElementById('bg').classList.contains('hide')
         || !document.getElementById('ch').classList.contains('hide')
+        || !document.getElementById('hs').classList.contains('hide')
+        || !document.getElementById('rd').classList.contains('hide')
         || !document.getElementById('al').classList.contains('hide');
   }
   function flushReward() {
@@ -2035,6 +2096,7 @@
   }
 
   function harvest(col, row) {
+    return saveAction(function () {
     var pl = S.plots[row][col];
     if (!pl.crop || pl.stage < C[pl.crop].days) return;
     if (!spend(1)) return;
@@ -2073,6 +2135,7 @@
     FG.audio.play('harvest');
     toast('收了一茬' + C[k].name + '，' + S.bag[k] + ' 束在篮里' + kept + '。' + cut);
     updateHUD();
+    });
   }
 
   function nearNpc() {
@@ -2405,10 +2468,12 @@
   }
 
   function cast(f) {
+    return saveAction(function () {
     // 等待时间随机，鱼才不像闹钟；窗口长短等上钩了才算
     if (S.book) S.book.casts++;
     S.fishing = { i: f.i, t: 0, wait: 1.0 + Math.random() * 2.8, win: 0, phase: 'wait', spot: f.spot };
     hint('浮漂稳住了　·　等它沉');
+    });
   }
 
   function rollFish() {
@@ -2450,6 +2515,7 @@
   }
 
   function reel() {
+    return saveAction(function () {
     var f = S.fishing;
     if (!f) return;
     if (f.phase === 'bite') {
@@ -2467,6 +2533,7 @@
       toast('提竿早了，鱼影子都没看见。', 2000);
     }
     S.fishing = null;
+    });
   }
 
   function pick(n) {
@@ -2549,11 +2616,62 @@
   }
 
   /* ---------------- 一天结束 ---------------- */
+  function growCrops() {
+    var grown = 0;
+    for (var r = 0; r < S.plots.length; r++) {
+      for (var c = 0; c < S.plots[r].length; c++) {
+        var pl = S.plots[r][c];
+        if (pl && pl.crop) {
+          if (pl.wet) { pl.stage++; grown++; }
+          pl.wet = false;
+        }
+      }
+    }
+    return grown;
+  }
+  function fixDayEnd() {
+    if (S.dayEnd) { S.ended = true; return; }
+    if (!S.ended) return;
+    // 旧版会在首次回家诗句处保存：钱已经结过，湿田可能还未生长。
+    // 只补仍然湿着的田；不再卖一遍箱子，也不重复长已经干了的田。
+    S.dayEnd = {
+      kind: 'day', day: S.day, legacy: true, lines: [],
+      farm: !!FG.MAPS.nanshan.farm && S.map === 'nanshan',
+      grown: growCrops(), catches: S.catchCount, carry: leftToShip(), gold: S.gold
+    };
+  }
+  function showPendingDay() {
+    var d = S.dayEnd;
+    if (!d) return;
+    var el = document.getElementById('de');
+    S.ended = true;
+    if (d.kind === 'year') {
+      el.querySelector('.v').textContent = '「农务各自归，闲暇辄相思。」';
+      el.querySelector('.v2').textContent = '《移居·其二》　·　第 ' + d.year + ' 年 · 岁有其终　·　二十四节气走完了一轮';
+      el.querySelector('.body').innerHTML = d.lines.join('');
+      document.getElementById('de-next').textContent = '明 春';
+    } else {
+      var v = FG.verseOfDay(d.day);
+      el.querySelector('.v').textContent = '「' + v[0] + '」';
+      el.querySelector('.v2').textContent = v[1] + (d.auto ? '　·　天黑了，鸡犬相闻' : '');
+      el.querySelector('.body').innerHTML =
+        (d.legacy ? '<div class="ln dim">这一日已经结算，进项留在结余里。明早继续。</div>'
+          : (d.lines.length ? d.lines.map(function (s) { return '<div class="ln">' + s + '</div>'; }).join('')
+            : '<div class="ln dim">' + (d.farm ? '箱子空着，明日再种。' : '一无所获，明日再来。') + '</div>'))
+        + (d.farm
+          ? '<div class="ln dim">' + (d.grown ? d.grown + ' 畦见长。' : '没有浇过水的，停在原地。') + '</div>'
+          : '<div class="ln dim">今日垂钓 ' + d.catches + ' 尾。</div>')
+        + (d.carry ? '<div class="ln dim">篮里还有 ' + d.carry + ' 样没放出去，按 O 放箱里，明日就折钱。</div>' : '')
+        + '<div class="ln gold">' + (d.legacy ? '' : '今日进项 ' + d.earned + ' 钱　') + '结余 ' + d.gold + '</div>';
+      document.getElementById('de-next').textContent = '晨 兴';
+    }
+    el.classList.remove('hide');
+  }
   function endDay(auto) {
     if (S.ended) return;
+    return saveAction(function () {
     S.ended = true;
     S.fishing = null;          // 天黑了得收线，不能让浮漂挂到明天
-    var v = FG.verseOfDay(S.day);
 
     // 出货：只出货箱里的东西。手里没放进去的留在篮里过夜。
     // 「天黑自动全卖」是上一版的做法：篮子当天收成当天清空，玩家不用做任何
@@ -2588,33 +2706,16 @@
     // 循环必须按 S.plots 自己的尺寸走，不能按 F.ROWS/F.COLS ——
     // 站在溪畔过夜时 F.on=false，F.apply 把 COLS/ROWS 置成了 1，
     // 按它循环就只处理第 0 格，南山那 24 格田整整一夜不生长。
-    var grown = 0;
-    for (var r = 0; r < S.plots.length; r++) {
-      for (var c = 0; c < S.plots[r].length; c++) {
-        var pl = S.plots[r][c];
-        if (!pl) continue;
-        if (pl.crop) {
-          if (pl.wet) { pl.stage++; grown++; }
-          pl.wet = false;
-        }
-      }
-    }
+    var grown = growCrops();
 
     S.todayEarned = earned;
-    var el = document.getElementById('de');
-    el.querySelector('.v').textContent = '「' + v[0] + '」';
-    el.querySelector('.v2').textContent = v[1] + (auto ? '　·　天黑了，鸡犬相闻' : '');
-    // 溪畔那种没有田的图，结算里不能说"没有浇过水的" —— 名和实对不上。
-    // 有田才报长势，没田就报今天钓了多少尾。
-    el.querySelector('.body').innerHTML =
-      (lines.length ? lines.map(function (s) { return '<div class="ln">' + s + '</div>'; }).join('')
-        : '<div class="ln dim">' + (F.on ? '箱子空着，明日再种。' : '一无所获，明日再来。') + '</div>')
-      + (F.on
-        ? '<div class="ln dim">' + (grown ? grown + ' 畦见长。' : '没有浇过水的，停在原地。') + '</div>'
-        : '<div class="ln dim">今日垂钓 ' + S.catchCount + ' 尾。</div>')
-      + (leftToShip() ? '<div class="ln dim">篮里还有 ' + leftToShip() + ' 样没放出去，按 O 放箱里，明日就折钱。</div>' : '')
-      + '<div class="ln gold">今日进项 ' + earned + ' 钱　结余 ' + S.gold + '</div>';
-    el.classList.remove('hide');
+    S.dayEnd = {
+      kind: 'day', day: S.day, auto: !!auto, lines: lines,
+      farm: !!curMap().farm, grown: grown, catches: S.catchCount,
+      carry: leftToShip(), earned: earned, gold: S.gold
+    };
+    showPendingDay();
+    });
   }
 
   /* ---------------- 年结 ----------------
@@ -2623,7 +2724,6 @@
      用的是同一个 #de 面板，只是把话换成一年的账。 */
   function showYearEnd(year) {
     var b = S.book || { crops: {}, fish: {}, picks: {}, casts: 0, earned: 0 };
-    var el = document.getElementById('de');
     var lines = [];
 
     function tally(book, table, unit) {
@@ -2676,19 +2776,19 @@
     if (noYield) lines.unshift('<div class="ln dim">这一年什么也没收成。</div>');
     lines.push('<div class="ln gold">一年进项 ' + b.earned + ' 钱</div>');
 
-    el.querySelector('.v').textContent = '「农务各自归，闲暇辄相思。」';
     // 出处必须写在这儿。句子的来历容易被记错：这不是《归园田居》，
     // 是《移居·其二》——维基文库 pageid 45372 核过。别处引陶诗一律连作者一起核。
-    el.querySelector('.v2').textContent = '《移居·其二》　·　第 ' + year + ' 年 · 岁有其终　·　二十四节气走完了一轮';
-    el.querySelector('.body').innerHTML = lines.join('');
-    document.getElementById('de-next').textContent = '明 春';
-    el.classList.remove('hide');
+    S.dayEnd = { kind: 'year', day: S.day, year: year, lines: lines };
+    showPendingDay();
     albumAdd('yearEnd', true);
     if (year >= 2) albumAdd('yearEnd2', true);
   }
 
   function startDay(silent) {
+    return saveAction(function () {
+    S.dayEnd = null;
     S.ended = false;
+    acc = 0;
     S.min = FG.DAY.START;
     S.stam = S.maxStam;
     S.todayWatered = 0;
@@ -2697,19 +2797,17 @@
     S.walkTo = null;
     S.touchGo = false;
     // 灶上今天还能做几口，是按「今天已经做了几口」数的。
-    // **不归零的话跨过一天还是满的** —— 读档进来也是，
-    // 而症状是「睡了一觉灶还是用不掉」
+    // 只在真正开始新一天时清；普通读档保留今天已经做过的次数。
     S.cookN = 0;
     document.getElementById('de').classList.add('hide');
     document.getElementById('hud').classList.remove('hide');
 
     // 刚过去的是这一年的最后一天（只在「玩家主动推进」时判，
-    // 读档进游戏时 silent=true，不能对着旧年份弹年结）
+    // 新局 silent=true，普通读档不经过这里）
     var yearEnd = !silent && FG.dayOfYear(S.day) === FG.SOLAR_YEAR;
     if (!silent) { S.day++; }
     // 早上这两件事只在**真过了一天**的时候做。
-    // startDay(true) 是读档和开新局走的同一条路：读档也下蛋的话，
-    // 读一次档草窝里就多一枚 —— 不必养鸡，存读档就能把蛋刷出来。
+    // 新局不额外下蛋，普通读档只恢复状态，也不重复晨间产出。
     // 跨年那一条也在这儿（不是挪到年结那个 return 之后）：
     // 跨年当天早上鸡照样下蛋、水照样引，挪过去就凭空少一天
     if (!silent) {
@@ -2762,8 +2860,22 @@
     }
     if (rewardQ.length) scheduleReward(2600);
     updateHUD();
+    });
   }
-  FG.nextDay = function () { startDay(false); };
+  FG.nextDay = function () {
+    if (S.dayEnd && S.dayEnd.kind === 'year') {
+      // 年结出现时已经到了明春。确认只收卡，不再加一天、喂一次棚。
+      S.dayEnd = null;
+      S.ended = false;
+      document.getElementById('de').classList.add('hide');
+      document.getElementById('de-next').textContent = '晨 兴';
+      if (rewardQ.length) scheduleReward(2600);
+      updateHUD();
+      save();
+      return;
+    }
+    startDay(false);
+  };
 
   /* ---------------- 绘制 ---------------- */
   // 硐里比地面上暗，而且越深越暗。整张压一层淡墨就行，不必每层出一张底图 ——
@@ -3346,7 +3458,7 @@
       tr._built = true;
       tr.addEventListener('click', function (e) {
         var s = e.target.closest('.slot');
-        if (s) { S.sel = s.getAttribute('data-k'); updateHUD(); }
+        if (s) { selectTool(s.getAttribute('data-k')); }
       });
     }
     // 器物架上的名字**不管这张图有没有田都要更新**。
@@ -3356,7 +3468,7 @@
     var slots = tr.querySelectorAll('.slot');
     for (var i = 0; i < slots.length; i++) {
       var k = slots[i].getAttribute('data-k');
-      slots[i].classList.toggle('on', k === S.sel);
+      slots[i].classList.toggle('on', k === (S.pendingSeed ? FG.CROP_OF_SEED[S.pendingSeed] : S.sel));
       // 器物那一格摆的是**现在这把**的名字：木锄 → 铜锄 → 铁锄。
       // 摆成个不动的「锄」的话，玩家在墟市买了铜锄，器物架上毫无变化
       if (!toolIsSeed(k)) {
@@ -3380,11 +3492,19 @@
   }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
 
+  // 器物架、数字键和购入农具都切换同一份选择；换器物就放下背包里的种子。
+  function selectTool(k) {
+    S.pendingSeed = null;
+    S.sel = k;
+    updateHUD();
+  }
+
   /* 手上捏着某一包种时，把原来 useOn 里那一支下种逻辑抽出来复用。
      判据（翻没翻、这畦有没有东西、时节对不对、种子够不够、体力够不够）
      必须和用器物下种时一模一样 —— 两份判据迟早会分叉，
      分叉了的表现是「行囊里明明捏着豆，点下去却说不是豆的时节」。 */
   function sowWith(crop, col, row) {
+    return saveAction(function () {
     var pl = S.plots[row][col];
     if (!pl) return;
     // 这道门是专门给「种子的表项 key 混进来」加的：
@@ -3420,6 +3540,7 @@
     skillAdd('geng', 'sow');
     FG.audio.play('plant'); toast('点下' + C[crop].name + '种。');
     updateHUD();
+    });
   }
 
   /* ---------------- 物品存取 ----------------
@@ -3741,6 +3862,7 @@
         : '放下了。', 2400);
       closeBag();
       drawBag();
+      updateHUD();
     });
   }
 
@@ -4280,7 +4402,7 @@
      而人情、托付、诗册、节日全挂在「说话」上。
      抽出来之后：走到位了调它 = 按 E，判定顺序永远是一份。 */
   function interact() {
-    if (S.ended) return;
+    if (!S.started || S.ended || panelOpen()) return;
             // 正在垂钓时 E 一律是提竿，不能顺手把人聊走或带出图
             if (S.fishing) { reel(); return; }
             var n = nearNpc();
@@ -4363,7 +4485,7 @@
   }
 
     function actAt(cx, cy) {
-      if (!S.started || S.ended) return;
+      if (!S.started || S.ended || panelOpen()) return;
       var cell = F.pick(cx, cy);
       // 硐里点岩面内任意一格都是「敲」，不管那一格自己敲开了没有。
       // 早先写成「点有石头的那一格才敲」，那是按单格判的 ——
@@ -4523,17 +4645,20 @@
          卡上那两行（递酒 / 回他的话）开着的时候 E 不翻句 ——
          那是两件待办，不是「下一句」。翻句只在他正常说话的时候做。 */
       if (K === 'e' || K === 'enter') {
-        if (!document.getElementById('dlg').classList.contains('hide')
-            && !document.getElementById('dlg-act').classList.contains('hide')
-            && !document.getElementById('dlg-quest').classList.contains('hide')
-            && dlgNpc) { talk(dlgNpc); return; }
+        if (!document.getElementById('dlg').classList.contains('hide')) {
+          if (document.getElementById('dlg-act').classList.contains('hide')
+              && document.getElementById('dlg-quest').classList.contains('hide')
+              && dlgNpc) talk(dlgNpc);
+          return;
+        }
+        if (panelOpen()) return;
         interact(); return;
       }
       // 面板开着的时候，游戏键一概不生效。**必须排在器物那一支前面**：
       // 排在后面的话，诗册开着按 1 就把锄头换了，
       // 玩家看着器物架上换了东西，还以为面板跟游戏是一套的
       if (panelOpen()) return;
-      if (e.key >= '1' && e.key <= '8') { S.sel = TOOLS[+e.key - 1].k; updateHUD(); return; }
+      if (e.key >= '1' && e.key <= '8') { selectTool(TOOLS[+e.key - 1].k); return; }
     });
 
     /* 这两个是 bindInput 的内部函数，所以只能在这儿挂 ——
@@ -4568,6 +4693,7 @@
     // 之所以一直没被发现，是因为对话卡常常还开着上一次谈话的，
     // 写进去看着就「像是显示了」；一旦前面有人把卡收走（换图）就露馅
     document.getElementById('dlg').classList.remove('hide');
+    refreshActs();
     FG.audio.play('buy');
     // 浮字排在对话卡后面弹（两边占的是同一块地方）
     rewardPush('生辰', [it.name + ' ×' + b.n]);
@@ -4596,6 +4722,8 @@
         invGive(rg, 1);
         rewardPush('相知', [FG.BAG_IDX[rg].name + ' ×1']);
       }
+      box.classList.remove('hide');
+      refreshActs();
       FG.audio.play('buy');
       save();
       return;
@@ -4786,11 +4914,14 @@
      关一张就收手 —— 连着按 Esc 一次关一张，
      而不是一次全关（玩家是「我先看看这一张」才按的）。
 
-     **结算卡（#de）必须排在最前**：它是过夜那一下弹出来的，
-     而玩家按 Esc 的时机常常是「不想睡了」—— 结果关掉的不是它，
-     底下那张顺手没了，还以为游戏把存档清了。 */
+     日结和年结已经改过账，不能取消。保留它们的继续按钮，
+     否则卡收起来了，游戏仍停在 ended，玩家就没有走到明天的入口。 */
   function closeTopPanel() {
-    var ids = ['de', 'dlg', 'st', 'sh', 'hs', 'rd', 'al', 'bg', 'ch', 'bx'];
+    if (!document.getElementById('de').classList.contains('hide')) {
+      toast(S.dayEnd && S.dayEnd.kind === 'year' ? '点“明春”继续。' : '点“晨兴”开始明天。', 2200);
+      return 'de';
+    }
+    var ids = ['dlg', 'st', 'sh', 'hs', 'rd', 'al', 'bg', 'ch', 'bx'];
     for (var i = 0; i < ids.length; i++) {
       var el = document.getElementById(ids[i]);
       if (el && !el.classList.contains('hide')) { el.classList.add('hide'); return ids[i]; }
@@ -4922,7 +5053,7 @@
       if (S.gold < g.price) { toast('钱不够，还差 ' + (g.price - S.gold) + ' 钱。'); return; }
       S.gold -= g.price;
       S.gear[g.gear] = g.lv;
-      S.sel = g.gear;
+      selectTool(g.gear);
       FG.audio.play('buy');
       toast('换成了' + g.name + '。');
     } else {
@@ -5004,6 +5135,18 @@
   }
   /* 进山：new 是从头开，cont 是接着玩。分成两支是因为两者要清的字段不同，
      而原来「入山」那一支自己重新写了一遍所有账 —— 少清一本就漏 */
+  function clearSessionUI() {
+    var ids = ['de', 'dlg', 'st', 'sh', 'hs', 'rd', 'al', 'bg', 'ch', 'bx'];
+    for (var i = 0; i < ids.length; i++) document.getElementById(ids[i]).classList.add('hide');
+    if (rewardTimer) { clearTimeout(rewardTimer); rewardTimer = null; }
+    rewardQ = [];
+    S.walkTo = null;
+    S.touchGo = false;
+    S.player.face = 0;
+    S.player.walk = 0;
+    FG.input.down = {};
+    acc = 0;
+  }
   function startFrom(how) {
     var t = document.getElementById('title');
     if (slotArmTimer) { clearTimeout(slotArmTimer); slotArmTimer = null; }
@@ -5011,6 +5154,8 @@
     if (how === 'cont') {
       var has = load();
       if (!has) { showTitle(); return; }   // 这一格刚被清掉了：回标题重来，别进一个空局
+      return saveAction(function () {
+      clearSessionUI();
       t.classList.add('hide');
       S.started = true;
       // 读档只把 S.map 填回去了，梯形和底图还没跟着切 —— 得补这一次 gotoMap
@@ -5020,44 +5165,25 @@
       // 读出来是 6 行，而画面上只是矮了一点点，看不出是哪一级丢了
       furnFix();
       roadFix();
-      startDay(true);
-      return;
+      document.getElementById('hud').classList.remove('hide');
+      if (S.dayEnd) showPendingDay();
+      else document.getElementById('de-next').textContent = '晨 兴';
+      updateHUD();
+      });
     }
+    return saveAction(function () {
+    replaceState(null, S.slot || 0);
+    clearSessionUI();
     t.classList.add('hide');
-    S.day = 1;
-    S.gold = 500;
-    S.bag = { dou: 0, su: 0, shu: 0, ji: 0, ju: 0 };
-    S.pouch = {};
-    S.picked = {};
-    S.steles = {};
-    S.jiu = 0; S.made = {}; S.bin = {}; S.binQ = 0; S.chest = {}; S.cookN = 0; S.favor = {};
-    S.ore = {}; S.rock = {}; S.mineFloor = 0; S.mineDeep = 0;
-    S.jiuYear = [];
-    // 诗册和田地也得清。原以为「入山」是干净的入口，其实 init() 早就把
-    // S 填过一遍了，而上面那些赋值只改了几个字段 —— 上一世的句子和
-    // 上一世的田原样留着。玩家的路径很朴素：玩几天，按 F5 回到标题，
-    // 点「入山」而不是「续前日」，于是新局从一块翻好的湿田开始
-    S.plots = [];                       // 下一个 gotoMap 会按农地图重铺一遍
-    S.album = {}; S.met = {}; S.got = {}; S.earned = 0;
-    // 五门手艺也是重开就归零的：手艺是这一世练出来的
     skillInit();
     totalInit();
     festInit();
     buildInit();
-    // 后面这几本是 9 月以来陆续加的。**每加一本账就得在这里补一行** ——
-    // 忘了的现象是「新局一开局就人人相知、到处是挂架」，看着像送的东西
     renInit();
-    S.dex = { good: {}, fish: {}, ore: {} };
-    S.birth = {};
-    S.pendingSeed = null;
-    S.fishing = null;
-    S.catchCount = 0;
-    S.seeds = { dou: 8, su: 4, shu: 3, ji: 2, ju: 2 };
-    S.gear = { chu: 0, piao: 0, jue: 0 };
     S.started = true;
     gotoMap('nanshan', [900, 800]);
     startDay(true);
-    save();
+    });
   }
 
   window.addEventListener('DOMContentLoaded', init);
@@ -5216,38 +5342,6 @@
   FG.canFish = canFish;
   FG.fishInSeason = fishInSeason;
   FG.fishHere = fishHere;
-  FG.restart = function () {
-    S.day = 1; S.gold = 500;
-    S.bag = { dou: 0, su: 0, shu: 0, ji: 0, ju: 0 };
-    S.seeds = { dou: 8, su: 4, shu: 3, ji: 2, ju: 2 };
-    S.gear = { chu: 0, piao: 0, jue: 0 };
-    // 重开就得是全新的一册。重开不清诗册的话，玩家会看着上一世的句子
-    // 在这一世重新亮起来，等于没重开。
-    S.album = {}; S.met = {}; S.got = {}; S.earned = 0;
-    // 见闻跟着诗册一起清：它记的是「这一世认出了什么」，不是「这游戏里有什么」
-    S.dex = { good: {}, fish: {}, ore: {} };
-    // 生辰也一样：这一世没给过的礼，下一世的日历上就该还没到
-    S.birth = {};
-    // 人情也归零。留着的话重开之后一开局就人人「相知」，
-    // 而相知那一句和那样东西一辈子只说一次，等于这一世再也听不到
-    renInit();
-    S.plots = []; S.pouch = {}; S.picked = {}; S.fishing = null; S.catchCount = 0;
-    // 刻石也一起清：读过六方留着，重开就等于没读
-    S.steles = {};
-    // 酒和人情也是重开就归零的
-    S.jiu = 0; S.made = {}; S.bin = {}; S.binQ = 0; S.chest = {}; S.cookN = 0; S.favor = {};
-    // 硐里敲开的石头也一样。留着的话重开之后玩家进硐发现四层已经见底，
-    // 而手上一个镐都没有 —— 那不是「接着玩」，是「没得玩了」
-    S.ore = {}; S.rock = {}; S.mineFloor = 0; S.mineDeep = 0;
-    S.jiuYear = [];
-    skillInit();
-    totalInit();
-    festInit();
-    buildInit();
-    S.pendingSeed = null;
-    bookInit();
-    gotoMap('nanshan', [900, 800]);
-    save();
-  };
+  FG.restart = function () { startFrom('new'); };
 
 })(window.FG = window.FG || {});

@@ -387,9 +387,11 @@ ok('第二年立春还是种得下豆', (await ev(`FG.inTerms(145, FG.CROPS.dou.
 ok('第二年立春依然种不下菊', (await ev(`FG.inTerms(145, FG.CROPS.ju.terms)`)) === false);
 
 // 点「明 春」进第二年第一个清晨
+const morningBeforeYearConfirm = await ev(`JSON.stringify({keep:FG.state.keep,dog:FG.state.dog,weather:FG.state.weather})`);
 await ev(`document.getElementById('de-next').click()`);
 await sleep(300);
-ok('点过之后进入第 146 天', (await ev(`FG.state.day`)) === 146);
+ok('点过之后仍是第 145 天，第二年第一天没有被跳过', (await ev(`FG.state.day`)) === 145);
+ok('确认年结不重复晨间产出', (await ev(`JSON.stringify({keep:FG.state.keep,dog:FG.state.dog,weather:FG.state.weather})`)) === morningBeforeYearConfirm);
 ok('按钮变回「晨 兴」', (await ev(`document.getElementById('de-next').textContent`)) === '晨 兴',
    await ev(`document.getElementById('de-next').textContent`));
 ok('年结面板收了', (await ev(`document.getElementById('de').classList.contains('hide')`)) === true);
