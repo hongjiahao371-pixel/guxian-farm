@@ -8,6 +8,14 @@
 **跑起来**：双击 `index.html` 就行。零依赖、零构建、零后端，
 存档在浏览器本地（localStorage），不上传任何东西。
 
+也可以在项目目录启动静态服务，再打开 <http://localhost:8000>：
+
+```bash
+python -m http.server 8000
+```
+
+请固定使用同一个浏览器与地址游玩；直接打开文件与 HTTP 地址使用的存档空间可能不同。
+
 ## 结构
 
 ```
@@ -18,22 +26,36 @@ js/field.js     田畦梯形与透视拾取
 js/ink.js       全部水墨笔触（人物、建筑、器物、地块）
 js/data.js      节气、作物、NPC、营造、配方、地图
 js/game.js      状态机与全部规则
-assets/         六张手绘底图
+assets/         五张手绘底图与人物素材
 dev/            验收套件（见下）
 ```
 
 ## 验收
 
-`dev/` 下是 39 套无头 Chrome 验收，全绿 **PASS 2089 / FAIL 0**。
+`dev/` 下保留 39 套原有无头 Chrome 验收，另有不依赖浏览器的逻辑与事件回归。
+逻辑回归使用生产代码，并模拟 DOM、Canvas、音频和时钟；不验证实际排版、触屏手感或帧率。
+
+```bash
+node dev/test-state.cjs         # 存档完整性、日结、跨年与坏档
+node dev/test-gameplay.cjs      # 工具选择、面板交互、对话及核心动作
+node --test dev/test-runner.mjs # 套件筛选、跳过与失败退出码
+```
+
+原有 Chrome 套件目前写有 Windows 默认 Chrome 安装路径，其他系统需调整路径并安装浏览器。
+这些脚本还使用 Node 的内置 Fetch/WebSocket，建议 Node 22 或更新版本。
+以下命令只在具备相应浏览器环境时运行：
 
 ```bash
 node dev/run-all.mjs            # 全跑，约 40 分钟
 node dev/run-all.mjs shoot-farm.mjs,shoot-walk.mjs    # 只跑其中几套
+node dev/run-all.mjs --skip shoot-farm.mjs,shoot-walk.mjs # 跳过指定套件
 node dev/shoot-audio.mjs        # 单跑一套
 node dev/check-tick.mjs dev/*.mjs   # 改完 dev/*.mjs 必跑：查模板串里的落单反引号
 ```
 
 每套自己拉一个 headless Chrome，用 CDP 敲键发事件，结果落 `dev/_all.log`。
+汇总发现失败时退出码为 1；错误参数为 2，不会误跑其它套件。
+本次排查及验证范围见 [2026-10-08 检查记录](docs/QA-2026-10-08.md)。
 **量的是画出来的东西，不是读代码猜的** —— 布局量 `getBoundingClientRect`，
 配色量 `getImageData`，判定点量坐标。
 
