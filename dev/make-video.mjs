@@ -14,8 +14,9 @@ import { spawn, execFileSync } from 'child_process';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RAW = path.join(ROOT, 'video', 'raw');
 const FRAMES = path.join(ROOT, 'video', 'frames');
 const FFMPEG = 'C:\\Users\\19819\\AppData\\Local\\Microsoft\\WinGet\\Links\\ffmpeg.exe';
@@ -24,7 +25,9 @@ if (!existsSync(FRAMES)) mkdirSync(FRAMES, { recursive: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const PORT = 9456;
 const profile = path.join(tmpdir(), 'guxian-vid2-' + process.pid);
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const CHROME = process.platform === 'darwin'
+  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const chrome = spawn(CHROME, ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--mute-audio',
   '--allow-file-access-from-files', '--remote-debugging-port=' + PORT, '--user-data-dir=' + profile,
   '--window-size=1920,1080', 'about:blank'], { stdio: 'ignore' });
@@ -144,7 +147,7 @@ for (let i = 0; i < SCENES.length; i++) {
   const html = frameHtml(src, sc);
   const tmp = path.join(FRAMES, '_t.html');
   writeFileSync(tmp, html, 'utf8');
-  await send('Page.navigate', { url: 'file:///' + tmp.replace(/\\/g, '/') });
+  await send('Page.navigate', { url: pathToFileURL(tmp).href });
   await sleep(900);
   const s = await send('Page.captureScreenshot', { format: 'png' });
   const out = path.join(FRAMES, String(i + 1).padStart(2, '0') + '-' + sc.f + '.png');

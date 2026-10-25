@@ -12,8 +12,9 @@ import { spawn } from 'child_process';
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'shots');
 if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true });
 
@@ -21,7 +22,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const PORT = 9403;
 const profile = path.join(tmpdir(), 'guxian-mach-' + process.pid);
 
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const CHROME = process.platform === 'darwin'
+  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const chrome = spawn(CHROME, [
   '--headless=new', '--disable-gpu', '--hide-scrollbars', '--mute-audio',
   '--allow-file-access-from-files',
@@ -99,7 +102,7 @@ ws.addEventListener('message', e => {
   }
 });
 await send('Page.enable'); await send('Runtime.enable');
-await send('Page.navigate', { url: 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/') });
+await send('Page.navigate', { url: pathToFileURL(path.join(ROOT, 'index.html')).href });
 await sleep(2600);
 await ev(`localStorage.clear()`);
 await ev(`location.reload()`);
@@ -355,7 +358,7 @@ await ev(`(function(){
   FG.state.player.x=a[0]; FG.state.player.y=a[1]+40; FG.state.walkTo=null; FG.updateHUD(); return 1})()`);
 await sleep(400);
 await ev(`FG.machPut('hive')`);
-ok('一把干菊进去了（need×in = 1×1）', (await ev(`FG.state.bag.ju`)) === 1, 'ju=' + await ev(`FG.state.bag.ju`));
+ok('一把鲜菊进去了（need×in = 1×1）', (await ev(`FG.state.bag.ju`)) === 1, 'ju=' + await ev(`FG.state.bag.ju`));
 ok('窠里排着的是蜜', (await ev(`FG.machJob('hive').out`)) === 'mi',
   await ev(`JSON.stringify(FG.machJob('hive'))`));
 ok('还没到两天，起不了', (await ev(`FG.machDone('hive')`)) === false);

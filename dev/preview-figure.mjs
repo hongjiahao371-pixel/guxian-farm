@@ -4,11 +4,14 @@ import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const ROOT = new URL('..', import.meta.url).pathname.replace(/^\//, '').replace(/\//g, '\\').replace(/\\$/, '');
-const OUT = ROOT + '\\dev\\_fig';
+const CHROME = process.platform === 'darwin'
+  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+const OUT = ROOT + 'dev/_fig';
 const PORT = 9355;
 const W = 1600, H = 900;
 const PROFILE = join(tmpdir(), 'guxian-fig-profile');
@@ -54,7 +57,7 @@ const ev = async e => {
   if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
   return r.result.value;
 };
-const file = 'file:///' + (ROOT + '\\index.html').replace(/\\/g, '/');
+const file = pathToFileURL(ROOT + 'index.html').href;
 await send('Page.navigate', { url: file });
 await sleep(2600);
 console.log('INK 就位 =', await ev(`!!(window.FG && FG.INK && FG.INK.farmer)`));

@@ -5,8 +5,9 @@ import { spawn } from 'child_process';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'shots');
 if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true });
 
@@ -15,7 +16,9 @@ const PORT = 9349;
 const profile = path.join(tmpdir(), 'guxian-hprobe-' + process.pid);
 
 // 窗口开成和画布一样大，缩放比才是 1
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const CHROME = process.platform === 'darwin'
+  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const chrome = spawn(CHROME, [
   '--headless=new', '--disable-gpu', '--hide-scrollbars', '--mute-audio',
   '--remote-debugging-port=' + PORT, '--user-data-dir=' + profile,
@@ -82,7 +85,7 @@ ws.addEventListener('message', e => {
   }
 });
 await send('Page.enable'); await send('Runtime.enable');
-await send('Page.navigate', { url: 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/') });
+await send('Page.navigate', { url: pathToFileURL(path.join(ROOT, 'index.html')).href });
 await sleep(2600);
 await ev(`localStorage.clear()`);
 await ev(`location.reload()`);

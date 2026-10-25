@@ -104,7 +104,10 @@ window.FG = window.FG || {};
       input.down[k] = true;
     });
     window.addEventListener('keyup', ev => {
-      const k = NORMALIZE[ev.key];
+      // 跟 keydown 同一张表：数字键的按态也得清 ——
+      // 原先只查 NORMALIZE，'1'-'8' 按下去 input.down['d1'] 永远是 true，
+      // 直到窗口失焦才整体清掉
+      const k = NORMALIZE[ev.key] || (/^[0-9]$/.test(ev.key) ? 'd' + ev.key : '');
       if (k) input.down[k] = false;
     });
     window.addEventListener('blur', () => { input.down = Object.create(null); });

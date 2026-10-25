@@ -13,12 +13,15 @@ import { spawn } from 'child_process';
 import { mkdtempSync, rmSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const PORT = 9421;
 const profile = mkdtempSync(path.join(tmpdir(), 'guxian-day-'));
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const CHROME = process.platform === 'darwin'
+  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const chrome = spawn(CHROME, ['--headless=new', '--disable-gpu', '--mute-audio',
   '--allow-file-access-from-files', '--remote-debugging-port=' + PORT, '--user-data-dir=' + profile,
   '--window-size=1600,900', 'about:blank'], { stdio: 'ignore' });
@@ -62,7 +65,7 @@ ws.addEventListener('message', e => {
   }
 });
 await send('Page.enable'); await send('Runtime.enable');
-await send('Page.navigate', { url: 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/') });
+await send('Page.navigate', { url: pathToFileURL(path.join(ROOT, 'index.html')).href });
 await sleep(2600);
 await ev(`localStorage.clear()`);
 await ev(`location.reload()`);

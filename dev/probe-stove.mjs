@@ -5,12 +5,15 @@ import { spawn } from 'child_process';
 import { rmSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const PORT = 9361;
 const profile = path.join(tmpdir(), 'guxian-probe-stove-' + process.pid);
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const CHROME = process.platform === 'darwin'
+  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const chrome = spawn(CHROME, [
   '--headless=new', '--disable-gpu', '--hide-scrollbars', '--mute-audio',
   '--remote-debugging-port=' + PORT, '--user-data-dir=' + profile,
@@ -50,7 +53,7 @@ ws.addEventListener('message', e => {
   if (m.id && pending.has(m.id)) { const p = pending.get(m.id); pending.delete(m.id); p.res(m.result); }
 });
 await send('Page.enable'); await send('Runtime.enable');
-await send('Page.navigate', { url: 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/') });
+await send('Page.navigate', { url: pathToFileURL(path.join(ROOT, 'index.html')).href });
 await sleep(2600);
 await ev(`localStorage.clear()`);
 await ev(`location.reload()`);

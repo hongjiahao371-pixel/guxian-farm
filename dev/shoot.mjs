@@ -5,13 +5,16 @@ import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const CHROME = process.platform === 'darwin'
+  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 // 脚本在 dev/ 下，游戏根目录是它的上一级 —— 拿 dev/ 当根会导航到不存在的
 // dev/index.html，页面 404，FG 自然 undefined，而且控制台还不报错。
-const ROOT = new URL('..', import.meta.url).pathname.replace(/^\//, '').replace(/\//g, '\\').replace(/\\$/, '');
-const OUT = ROOT + '\\shots';
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+const OUT = ROOT + 'shots';
 const PORT = 9333;
 const W = 1600, H = 900;
 
@@ -103,7 +106,7 @@ async function key(k) {
   await sleep(90);
 }
 
-const file = 'file:///' + (ROOT + '\\index.html').replace(/\\/g, '/');
+const file = pathToFileURL(ROOT + 'index.html').href;
 await send('Page.navigate', { url: file });
 await sleep(2500);
 // 每轮先清存档：上一轮留下的 save 会让「续前日」有值，测的就不是新开局的路径了

@@ -2028,9 +2028,9 @@
       I.dot(ctx, -u * 0.22, u * 0.16, u * 0.055, I.INK, 0.8);
       return;
     }
-    if (id === 'bie') {                          // 鳖：甲壳 + 软边
-      I.dot(ctx, 0, u * 0.04, u * 0.46, I.QING, 0.7);
-      ctx.save();
+    if (id === 'gui') {                          // 鳖：甲壳 + 软边。鱼表里鳖的 id 是 gui ——
+      I.dot(ctx, 0, u * 0.04, u * 0.46, I.QING, 0.7);   // 原先写成 'bie'，可没有哪味东西叫 bie，
+      ctx.save();                                // 这一整支是死分支，鳖一直被画成普通鱼
       ctx.beginPath();
       ctx.ellipse(0, u * 0.04, u * 0.46, u * 0.40, 0, 0, Math.PI * 2);
       ctx.strokeStyle = I.INK + '0.55)';
@@ -2046,7 +2046,7 @@
     var bw, bh, tw, col2, ex, ey;
     if (id === 'ji') { bw = 0.40; bh = 0.30; tw = 0.26; col2 = I.INK_SOFT; ex = 0.20; ey = -0.07; }
     else if (id === 'bian') { bw = 0.46; bh = 0.22; tw = 0.30; col2 = I.QING; ex = 0.26; ey = -0.06; }
-    else if (id === 'gui') { bw = 0.44; bh = 0.25; tw = 0.46; col2 = I.HUA; ex = 0.24; ey = -0.07; }
+    else if (id === 'luo') { bw = 0.44; bh = 0.25; tw = 0.46; col2 = I.HUA; ex = 0.24; ey = -0.07; }
     else { bw = 0.44; bh = 0.29; tw = 0.24; col2 = I.ZHE; ex = 0.22; ey = -0.08; }
     ctx.save();
     ctx.beginPath();
@@ -2058,7 +2058,7 @@
     I.brush(ctx, [[-u * bw * 0.85, 0], [-u * (bw + tw), -u * 0.30], [-u * (bw + tw * 0.82), u * 0.32]],
       u * 0.075, u * 0.045, col2, 0.72);
     I.dot(ctx, u * ex, u * ey, u * 0.055, I.INK, 0.9);
-    if (id === 'gui') {          // 鳜：身上的斑点是它唯一的名片
+    if (id === 'luo') {          // 鳜：身上的斑点是它唯一的名片（鳜鱼 id 是 luo，原先挂在 gui 上）
       I.dot(ctx, -u * 0.12, -u * 0.06, u * 0.05, I.CLU_D, 0.7);
       I.dot(ctx, u * 0.06, u * 0.08, u * 0.05, I.CLU_D, 0.6);
     }

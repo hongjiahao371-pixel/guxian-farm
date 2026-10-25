@@ -4,11 +4,14 @@ import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const ROOT = new URL('..', import.meta.url).pathname.replace(/^\//, '').replace(/\//g, '\\').replace(/\\$/, '');
-const OUT = ROOT + '\\shots';
+const CHROME = process.platform === 'darwin'
+  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+const OUT = ROOT + 'shots';
 const PORT = 9347;
 const W = 1600, H = 900;
 const PROFILE = join(tmpdir(), 'guxian-map-profile');
@@ -88,7 +91,7 @@ function ok(name, cond, extra) {
   if (!cond) process.exitCode = 1;
 }
 
-const file = 'file:///' + (ROOT + '\\index.html').replace(/\\/g, '/');
+const file = pathToFileURL(ROOT + 'index.html').href;
 await send('Page.navigate', { url: file });
 await sleep(2500);
 await ev(`localStorage.clear()`);
@@ -209,7 +212,7 @@ ok('货架上的货都摆出来了', (await ev(`document.querySelectorAll('#sh-l
 await shot('07-杂货铺.png');
 await ev(`document.querySelector('#sh-list .goods[data-k="seedD"]').click()`);
 await sleep(400);
-ok('买完钱少了', (await ev(`FG.state.gold`)) === gold0 - 34, `${gold0} -> ${await ev('FG.state.gold')}`);
+ok('买完钱少了', (await ev(`FG.state.gold`)) === gold0 - 18, `${gold0} -> ${await ev('FG.state.gold')}`);   // 豆种 18：卖 34，留出进价和卖价之间那一截
 ok('豆种多了一份', (await ev(`FG.state.seeds.dou`)) === seed0 + 1, `${seed0} -> ${await ev('FG.state.seeds.dou')}`);
 await ev(`document.getElementById('sh-x').click()`);
 await sleep(300);

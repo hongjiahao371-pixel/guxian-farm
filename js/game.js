@@ -154,7 +154,9 @@
       var d = JSON.parse(JSON.stringify(S));
       d.player = { x: S.player.x, y: S.player.y };
       localStorage.setItem(saveKey(S.slot || 0), JSON.stringify(d));
-      FG.audio.play('buy');
+      // **存档是纯落盘，不放声音**。原先这里一响金币声，33 个调用点全跟着响 ——
+      // 说话收尾、读碑、接托付都「叮」，而买器物那几处自己已经放过一声，
+      // 再叠这里的一声就成了双响。要金币声的交易动作各自 play('buy')。
     } catch (e) { }
   }
   function load() {
@@ -372,17 +374,21 @@
 
   /* ---------------- 时间 ---------------- */
   function step(dt) {
-    // MIN_PER_SEC 的单位是「真实 1 秒 = 游戏内多少分钟」，
-    // 这里不能再乘 60 —— 乘了等于一天 17 秒就过完，玩家还没锄完两畦天就黑了。
-    acc += dt * FG.MIN_PER_SEC;
-    if (acc >= 1) {
-      var add = Math.floor(acc);
-      acc -= add;
-      S.min += add;
-      if (S.min >= FG.DAY.END) { S.min = FG.DAY.END; endDay(true); }
-      if (Math.floor(S.min / 30) !== FG._lastShichen) { FG._lastShichen = Math.floor(S.min / 30); updateHUD(); }
-      // 薄暮还在外头就收一句。去重交给 albumAdd，这里不用另记标志
-      if (FG.SHEN(S.min) === '薄暮') albumAdd('duskOut');
+    // **面板开着的时候时钟停走** —— 看货单、翻诗册、跟人说话的工夫，
+    // 不该从这一天的日头里扣。原先只判 started/ended：
+    // 实测开着货单半分钟，时刻从 08:31 飙到 13:30，半天工时没了。
+    // 行走与钓鱼照旧：走路是玩家点下的令，咬钩等的是注意力，不是日头
+    if (!panelOpen()) {
+      acc += dt * FG.MIN_PER_SEC;
+      if (acc >= 1) {
+        var add = Math.floor(acc);
+        acc -= add;
+        S.min += add;
+        if (S.min >= FG.DAY.END) { S.min = FG.DAY.END; endDay(true); }
+        if (Math.floor(S.min / 30) !== FG._lastShichen) { FG._lastShichen = Math.floor(S.min / 30); updateHUD(); }
+        // 薄暮还在外头就收一句。去重交给 albumAdd，这里不用另记标志
+        if (FG.SHEN(S.min) === '薄暮') albumAdd('duskOut');
+      }
     }
     movePlayer(dt);
     stepFishing(dt);
@@ -788,9 +794,12 @@
     for (i = 0; i < l.length; i++) if (!npcGone(l[i])) out.push(l[i]);
     return out;
   }
-  // 今天聚在墟市上的那几个人
+  // 今天聚在墟市上的那几个人。
+  // **按墟市那张图的 NPC 数，不按 curMap()** —— 清早这条被天黑结算
+  // 前的那张图调用，人还睡在南山/屋里，curMap() 数出来是 0，
+  // 每个节日早上都弹「广场上站着 0 位」，而广场上明明站着四个
   function festCrowd(f) {
-    var out = [], ids = curMap().npcs, i, n;
+    var out = [], ids = FG.MAPS.xushi.npcs, i, n;
     for (i = 0; i < ids.length; i++) {
       n = FG.NPCS[ids[i]];
       if (n && FG.FEST_SPOTS[n.id]) out.push(n);
@@ -1478,11 +1487,11 @@
                      : '地冻上了，锄头下不去。等' + FG.SOLAR[0].n + '再说。', 2800);
       return;
     }
-    var todo = [], i, pl, busy = 0, notTilled = 0, already = 0, bare = 0;
+    var todo = [], i, pl, busy = 0, notTilled = 0, already = 0, bare = 0, ripe = 0;
     for (i = 0; i < cells.length; i++) {
       pl = S.plots[cells[i][1]][cells[i][0]];
       if (k === 'chu') {
-        if (pl.crop) { busy++; continue; }
+        if (pl.crop) { busy++; if (pl.stage >= C[pl.crop].days) ripe++; continue; }
         if (pl.tilled) { already++; continue; }
       } else {
         if (!pl.tilled) { notTilled++; continue; }
@@ -1500,7 +1509,10 @@
       // 「动不了」的原因要分开说。原来只有一句「这畦已翻过」，
       // 铁锄一框九畦的时候混成一句，玩家不知道是哪几畦挡住的
       if (k === 'chu') {
-        toast(busy ? '这一片里都已经种上了。' : '这一片都翻过了，不必再锄。');
+        // 拿着锄点熟穗是新手第一次必踩的坑（actAt 里熟了且拿的不是锄才收）——
+        // 光说「种上了」等于让玩家以为坏了。要把出路说给他
+        toast(busy ? (ripe ? '熟了。把锄换掉就能收。' : '这一片里都已经种上了。')
+                   : '这一片都翻过了，不必再锄。');
       } else {
         toast(bare ? '地是翻好的，可上头还没有苗。浇了也白浇。'
           : (notTilled ? '得先锄开才能浇。' : '这一片浇过了。'));
@@ -1700,10 +1712,15 @@
   // 浮字和这四张卡是同一块地方（都在 top:12% 附近的画面中央）。
   // 任何一张开着都不该弹奖励。
   function panelOpen() {
+    // 名单要和 closeTopPanel 那十张对齐。**漏一张的症状是两张纸叠在画面上**：
+    // 屋里（hs）、歇脚处（rd）原先不在 —— 它们开着的时候 Tab/V/O 照样
+    // 再开一张，而 Esc 关的还未必是玩家眼前那张
     return !document.getElementById('de').classList.contains('hide')
         || !document.getElementById('dlg').classList.contains('hide')
         || !document.getElementById('sh').classList.contains('hide')
         || !document.getElementById('st').classList.contains('hide')
+        || !document.getElementById('hs').classList.contains('hide')
+        || !document.getElementById('rd').classList.contains('hide')
         || !document.getElementById('bx').classList.contains('hide')
         || !document.getElementById('bg').classList.contains('hide')
         || !document.getElementById('ch').classList.contains('hide')
@@ -2057,7 +2074,13 @@
     var cut = '';
     if (C[k].regrow) {
       pl.cut = (pl.cut || 0) + 1;      // 已经割过几刀
-      cut = '　还能再割 ' + cutLeft(k, pl.cut) + ' 刀';
+      // cutLeft 按播种窗口算（见它头上那段），而收成必然落在窗口之外 ——
+      // 真收的那天它一定是 0，可茬口是真实在长的（stage 退回 days-regrow，
+      // 五天后再熟）。收一茬说一句「还能再割 0 刀」、过五天真又结了，
+      // 等于指着活的说是死的。所以 0 的那档不说刀数，说间隔
+      var cutN = cutLeft(k, pl.cut);
+      cut = cutN > 0 ? '　还能再割 ' + cutN + ' 刀'
+                     : '　过 ' + C[k].regrow + ' 天又能割';
     }
     // 耕到四级才留得下种。以前只有墟市买得到，所以「年年买种」一直
     // 是一条看不见的税；留种是**多一个能做的事**，不是多收一份钱。
@@ -2553,6 +2576,11 @@
     if (S.ended) return;
     S.ended = true;
     S.fishing = null;          // 天黑了得收线，不能让浮漂挂到明天
+    // **先把开着的面板都收掉**。夜里 21:00 自动结算那一下尤其要紧：
+    // 结算卡是全屏遮罩，出货箱开着的话被它整个压住，点哪都是结算 ——
+    // 实测过「翻着货单被天黑偷袭」这一幕。手动睡那条路（屋里点床）
+    // 也一样：床一点，屋面板就该收了，不能留在结算卡底下
+    while (closeTopPanel()) { }
     var v = FG.verseOfDay(S.day);
 
     // 出货：只出货箱里的东西。手里没放进去的留在篮里过夜。
@@ -2614,6 +2642,16 @@
         : '<div class="ln dim">今日垂钓 ' + S.catchCount + ' 尾。</div>')
       + (leftToShip() ? '<div class="ln dim">篮里还有 ' + leftToShip() + ' 样没放出去，按 O 放箱里，明日就折钱。</div>' : '')
       + '<div class="ln gold">今日进项 ' + earned + ' 钱　结余 ' + S.gold + '</div>';
+    // 年结标记只在年结面板上挂着（showYearEnd 里挂）。普通结算开面板时
+    // 必须摘掉 —— 不然 Esc 关掉去年年结面板再玩一天，夜里点「晨 兴」
+    // 还会被当成「明 春」，又一天凭空过去。按钮文字一并拨回来：
+    // Esc 路径下昨夜那颗「明 春」会原样留着，看着像点下去又不翻日
+    el.removeAttribute('data-year');
+    document.getElementById('de-next').textContent = '晨 兴';
+    // **天黑结算本身就是一道存档点**。这一天里的翻锄下种浇水收获
+    // 都不各自落盘（动作太碎），结算把箱子折完钱、畦里长完苗之后
+    // 一次性记下 —— 中途关浏览器最多损失睡前的最后一段，不再整天的活白干
+    save();
     el.classList.remove('hide');
   }
 
@@ -2726,6 +2764,9 @@
     } else {
       weatherFix();
     }
+    // 清晨这一串（下蛋 / 狗叼货 / 天气）也记一道档 —— 结算存的是睡前，
+    // 这里存的是醒后。两头都有，玩家任何时候关页面都不丢一整天
+    save();
     // 一年里第一次进藏季，说一句。撞了「地冻上了」才知道冬天到了，
     // 那是让玩家自己撞墙 —— 这条是让他**第一天就知道**。
     // 排在天气那句后面：两个抬头不一样，不会被并成一条
@@ -2742,7 +2783,15 @@
     if (S.book) S.book.last = S.day;
     if (!S.book) bookInit();
     if (yearEnd) {
-      document.getElementById('de-next').textContent = '明 春';
+      // 年结不是「又一天」：day 已经落在第二年第 1 天（立春当天），
+      // 当天早上的鸡、水、天气也都跑过了。所以「明 春」**不能再走 nextDay** ——
+      // 再走一次就把立春整天跳过去（症状：点完按钮直接第 146 天）。
+      // 挂一个 data-year 标记，#de-next 的点击处理器据此只收面板不翻日。
+      // 排队的浮字（天气/节日那几句）也得有人调度 —— 原来这里提前 return，
+      // 没了定时器，Esc 关掉面板的话这几句一直压到下一次 reward 才冒出来。
+      // flushReward 自己会按住（panelOpen 时反复改约），面板一关就弹
+      document.getElementById('de').setAttribute('data-year', '1');
+      scheduleReward();
       showYearEnd(FG.yearOf(S.day) - 1);
       // 账本要换新的一年。诗册（还没做）是跨年的，账本不是。
       bookInit();
@@ -2816,9 +2865,12 @@
         }
       }
       // 积雪。**画在田畦之后、人物之前** —— 雪是铺在地上的，
-      // 人站在雪上面，而人身上不该盖一层白
-      if (isSnow()) drawSnowOnField();
+      // 人站在雪上面，而人身上不该盖一层白。
+      // 画在 r 循环**外面**：整片田是一整幅，F.ROWS 有 5 行，
+      // 写在循环体里就是同一批雪团叠 5 遍 —— α 复合后整片田白得盖掉畦埂，
+      // 而设计标定的透明度只有 0.17
     }
+    if (farmOn && isSnow()) drawSnowOnField();
 
     // 石硐：一层就是墙上那 18 块。敲开了就不画石头，改画一个挖空的洞，
     // 玩家一眼能看出这一层还剩多少、剩下的是哪几块
@@ -3855,7 +3907,8 @@
     // 「行囊里揣着五把菱角，图鉴上写着还没遇见过」
     dexAdd('good', k);
     S.dog.n = 0; S.dog.k = null;
-    albumAdd('firstDog');
+    // 原先这里 albumAdd('firstDog')：诗册里没有这个 key（27 句是锁定的审计数，
+    // 狗这一句没入册），albumAdd 查不到就静默返回 —— 看着像记了，其实什么都没发生
     FG.audio.play('buy');
     toast('狗把' + it.name + '叼回来了，一共 ' + n + ' 份。', 3000);
     save(); updateHUD();
@@ -4153,6 +4206,9 @@
   function binList() {
     var out = [], k;
     for (k in S.bin) {
+      // 不认识的 key 跟 endDay 一个待遇：跳过不列。旧档里存过后来删掉的
+      // 物品 key 的话，openBin 读 b.it.name 当场就炸 —— 结算那边早就守了
+      if (!FG.BAG_IDX[k]) continue;
       if ((S.bin[k] || 0) > 0) out.push({ k: k, it: FG.BAG_IDX[k], n: S.bin[k] });
     }
     return out;
@@ -4523,10 +4579,20 @@
          卡上那两行（递酒 / 回他的话）开着的时候 E 不翻句 ——
          那是两件待办，不是「下一句」。翻句只在他正常说话的时候做。 */
       if (K === 'e' || K === 'enter') {
-        if (!document.getElementById('dlg').classList.contains('hide')
-            && !document.getElementById('dlg-act').classList.contains('hide')
-            && !document.getElementById('dlg-quest').classList.contains('hide')
-            && dlgNpc) { talk(dlgNpc); return; }
+        // 对话卡开着时 E 是「翻句」。但卡上那两行（递酒 / 回他的话）
+        // 开着的时候不翻 —— 那是两件待办，不是「下一句」。
+        // 原先这里的判据恰好写反了（该查 hide 的查了「不 hide」），
+        // 结果 E 永远拦不住，两行开着照样翻句
+        if (!document.getElementById('dlg').classList.contains('hide')) {
+          var actH = document.getElementById('dlg-act').classList.contains('hide');
+          var qstH = document.getElementById('dlg-quest').classList.contains('hide');
+          if (actH && qstH && dlgNpc) talk(dlgNpc);
+          return;
+        }
+        // 对话卡没开，才轮到「面板开着游戏键不生效」的守卫 ——
+        // 不然 E 会在面板底下把世界交互偷偷做了（货单开着按 E，
+        // 对话卡被压在底下看不见，人情分却在背后动了）
+        if (panelOpen()) return;
         interact(); return;
       }
       // 面板开着的时候，游戏键一概不生效。**必须排在器物那一支前面**：
@@ -4568,6 +4634,10 @@
     // 之所以一直没被发现，是因为对话卡常常还开着上一次谈话的，
     // 写进去看着就「像是显示了」；一旦前面有人把卡收走（换图）就露馅
     document.getElementById('dlg').classList.remove('hide');
+    // 卡上那两行（递酒/回话）也得按**这一个 NPC**重刷 ——
+    // 不刷的话显隐还是上一个人谈话时留下的：要么多了点不动的行，
+    // 要么该亮的没亮。talk() 结尾有同款 refreshActs，这里同样要
+    refreshActs();
     FG.audio.play('buy');
     // 浮字排在对话卡后面弹（两边占的是同一块地方）
     rewardPush('生辰', [it.name + ' ×' + b.n]);
@@ -4782,15 +4852,18 @@
   function closeShop() { document.getElementById('sh').classList.add('hide'); }
 
   /* Esc 关掉**开着的那几张**，从最上面那张往下关。
-     顺序就是叠放顺序（后来的开着就在上面）：结算 > 对话 > 面板 > 行囊 > 木箱 > 屋 > 歇脚。
+     叠放顺序 = DOM 顺序（十张 .overlay 同一个 z-index，后来居上的是 DOM 里靠后的）：
+     结算 > 诗册 > 屋 > 歇脚 > 木箱盖 > 行囊 > 灶 > 货单 > 对话。
      关一张就收手 —— 连着按 Esc 一次关一张，
      而不是一次全关（玩家是「我先看看这一张」才按的）。
 
      **结算卡（#de）必须排在最前**：它是过夜那一下弹出来的，
      而玩家按 Esc 的时机常常是「不想睡了」—— 结果关掉的不是它，
-     底下那张顺手没了，还以为游戏把存档清了。 */
+     底下那张顺手没了，还以为游戏把存档清了。
+     原先 #dlg 排第二、#al 排第八，跟真实叠放（对话卡在最底、诗册在顶）恰好倒着 ——
+     两张同开时按 Esc 关掉的是底底下那张，玩家眼前那张纹丝不动。 */
   function closeTopPanel() {
-    var ids = ['de', 'dlg', 'st', 'sh', 'hs', 'rd', 'al', 'bg', 'ch', 'bx'];
+    var ids = ['de', 'al', 'hs', 'rd', 'ch', 'bx', 'st', 'bg', 'sh', 'dlg'];
     for (var i = 0; i < ids.length; i++) {
       var el = document.getElementById(ids[i]);
       if (el && !el.classList.contains('hide')) { el.classList.add('hide'); return ids[i]; }
@@ -5020,7 +5093,16 @@
       // 读出来是 6 行，而画面上只是矮了一点点，看不出是哪一级丢了
       furnFix();
       roadFix();
-      startDay(true);
+      // 读档是「接着玩」，**不能走 startDay(true)**：那条路把时刻、体力、
+      // 当日灶口数全按清晨重置 —— 干到体力见底存个档，标题页「续」一下
+      // 就满血回到清晨，等于白捡一夜。鸡蛋、天气那些口子作者在 startDay
+      // 的注释里都堵了，唯独这一条漏着。所以这里只把面板归位：
+      // 存档里几点就几点、体力多少就多少（天气在 load() 的 fix 链里修过了）
+      document.getElementById('de').classList.add('hide');
+      document.getElementById('hud').classList.remove('hide');
+      if (S.ended) { startDay(false); return; }   // 存档停在天黑结算上（老档）：把这一夜翻过去
+      if (S.book) S.book.last = S.day; else bookInit();   // 老档可能没有账本
+      updateHUD();
       return;
     }
     t.classList.add('hide');
@@ -5031,8 +5113,14 @@
     S.picked = {};
     S.steles = {};
     S.jiu = 0; S.made = {}; S.bin = {}; S.binQ = 0; S.chest = {}; S.cookN = 0; S.favor = {};
+    // 递酒折的分开是人情的一半：favor 清了它不清，重开之后 canGive
+    // 读到的还是上一世烧满的数，「递一坛酒」那一行一辈子不再出现
+    S.jiuPts = {};
     S.ore = {}; S.rock = {}; S.mineFloor = 0; S.mineDeep = 0;
     S.jiuYear = [];
+    // 狗这本账也一样：不清的话上一世的 dog.day 带进来，
+    // 新局里狗几十天不叼东西；窝边那几份还成了白捡的开局礼
+    S.dog = { day: 0, n: 0, k: null };
     // 诗册和田地也得清。原以为「入山」是干净的入口，其实 init() 早就把
     // S 填过一遍了，而上面那些赋值只改了几个字段 —— 上一世的句子和
     // 上一世的田原样留着。玩家的路径很朴素：玩几天，按 F5 回到标题，
@@ -5234,8 +5322,11 @@
     S.plots = []; S.pouch = {}; S.picked = {}; S.fishing = null; S.catchCount = 0;
     // 刻石也一起清：读过六方留着，重开就等于没读
     S.steles = {};
-    // 酒和人情也是重开就归零的
+    // 酒和人情也是重开就归零的。jiuPts、狗窝这两本账跟着一起清
+    // （startFrom('new') 那段写过为什么：不清的话递酒递不出去、狗不叼货）
     S.jiu = 0; S.made = {}; S.bin = {}; S.binQ = 0; S.chest = {}; S.cookN = 0; S.favor = {};
+    S.jiuPts = {};
+    S.dog = { day: 0, n: 0, k: null };
     // 硐里敲开的石头也一样。留着的话重开之后玩家进硐发现四层已经见底，
     // 而手上一个镐都没有 —— 那不是「接着玩」，是「没得玩了」
     S.ore = {}; S.rock = {}; S.mineFloor = 0; S.mineDeep = 0;

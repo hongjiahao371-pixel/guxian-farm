@@ -13,7 +13,7 @@
 //   ④ 背景音乐：有没有被接上（查调用点，不是查它写得对不对）
 import { spawn } from 'child_process';
 import { tmpdir } from 'os';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { rmSync } from 'fs';
 import path from 'path';
 
@@ -21,7 +21,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const PORT = 9463;
 const profile = path.join(tmpdir(), 'guxian-audio-' + process.pid);
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const CHROME = process.platform === 'darwin'
+  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 // **不加 --mute-audio**：那是输出设备层面的静音，跟 AudioContext 的状态是两回事
 const chrome = spawn(CHROME, ['--headless=new', '--disable-gpu', '--hide-scrollbars',
   '--allow-file-access-from-files', '--remote-debugging-port=' + PORT, '--user-data-dir=' + profile,
@@ -73,7 +75,7 @@ ws.addEventListener('message', e => {
   }
 });
 await send('Page.enable'); await send('Runtime.enable');
-await send('Page.navigate', { url: 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/') });
+await send('Page.navigate', { url: pathToFileURL(path.join(ROOT, 'index.html')).href });
 await sleep(3000);
 
 console.log('— AudioContext —');

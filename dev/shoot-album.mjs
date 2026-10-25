@@ -6,8 +6,9 @@ import { spawn } from 'child_process';
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'shots');
 if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true });
 
@@ -15,7 +16,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const PORT = 9339;
 const profile = path.join(tmpdir(), 'guxian-album-' + process.pid);
 
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const CHROME = process.platform === 'darwin'
+  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const chrome = spawn(CHROME, [
   '--headless=new', '--disable-gpu', '--hide-scrollbars', '--mute-audio',
   '--remote-debugging-port=' + PORT, '--user-data-dir=' + profile,
@@ -107,7 +110,7 @@ ws.addEventListener('message', e => {
   }
 });
 await send('Page.enable'); await send('Runtime.enable');
-const file = 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/');
+const file = pathToFileURL(path.join(ROOT, 'index.html')).href;
 await send('Page.navigate', { url: file });
 await sleep(2600);
 await ev(`localStorage.clear()`);
@@ -298,10 +301,13 @@ await sleep(900);
 await ev(`FG.nextDay()`);
 await sleep(300);
 ok('第二年过完才收「忘怀得失」', (await has('yearEnd2')) === true);
-ok('年结面板还开着的时候不弹', (await toastText()).indexOf('诗册得句') < 0, await toastText());
+// 年结那句现在**当场排队、面板一关就弹**（startDay 的年结分支自己挂了调度），
+// 上一年的诗句可能还在 6 秒浮字窗里 —— 所以这里只断言「今年的这句没弹」，
+// 别拿「诗册得句」四个字泛匹配，会撞上上一年那句的尾巴
+ok('年结面板还开着的时候不弹', (await toastText()).indexOf('《五柳先生传》') < 0, await toastText());
 await ev(`document.getElementById('de-next').click()`);
 await sleep(300);
-ok('点掉面板才弹出来', (await waitToast('诗册得句', 7000)).indexOf('《五柳先生传》') >= 0, await toastText());
+ok('点掉面板才弹出来', (await waitToast('《五柳先生传》', 7000)).indexOf('《五柳先生传》') >= 0, await toastText());
 
 console.log('\nLOGS', logs.length ? logs.join('\n  ') : '(无报错)');
 if (logs.length) process.exitCode = 1;

@@ -7,8 +7,9 @@ import { spawn } from 'child_process';
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'shots');
 if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true });
 
@@ -16,7 +17,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const PORT = 9337;
 const profile = path.join(tmpdir(), 'guxian-solar-' + process.pid);
 
-const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const CHROME = process.platform === 'darwin'
+  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  : 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const chrome = spawn(CHROME, [
   '--headless=new', '--disable-gpu', '--hide-scrollbars', '--mute-audio',
   '--remote-debugging-port=' + PORT, '--user-data-dir=' + profile,
@@ -111,7 +114,7 @@ ws.addEventListener('message', e => {
 });
 await send('Page.enable'); await send('Runtime.enable');
 
-const file = 'file:///' + path.join(ROOT, 'index.html').replace(/\\/g, '/');
+const file = pathToFileURL(path.join(ROOT, 'index.html')).href;
 await send('Page.navigate', { url: file });
 await sleep(2600);
 await ev(`localStorage.clear()`);
@@ -386,10 +389,15 @@ ok('HUD 开始显示年第 2 年', hud2.indexOf('立春') >= 0 && hud2.indexOf('
 ok('第二年立春还是种得下豆', (await ev(`FG.inTerms(145, FG.CROPS.dou.terms)`)) === true);
 ok('第二年立春依然种不下菊', (await ev(`FG.inTerms(145, FG.CROPS.ju.terms)`)) === false);
 
-// 点「明 春」进第二年第一个清晨
+// 点「明 春」收面板。立春当天（145）在面板弹出时就已经备好了 ——
+// 点下去要落在这天玩，**不能再翻日**（原先点完直接跳到 146，
+// 立春整天玩不到，清晨事件还按两天各跑一遍）
 await ev(`document.getElementById('de-next').click()`);
 await sleep(300);
-ok('点过之后进入第 146 天', (await ev(`FG.state.day`)) === 146);
+ok('点过之后落在第 145 天（立春当天玩得到）', (await ev(`FG.state.day`)) === 145,
+   '第 ' + (await ev(`FG.state.day`)) + ' 天');
+ok('年结标记也摘了（夜里的普通结算不再被当成明春）',
+   (await ev(`document.getElementById('de').getAttribute('data-year')`)) === null);
 ok('按钮变回「晨 兴」', (await ev(`document.getElementById('de-next').textContent`)) === '晨 兴',
    await ev(`document.getElementById('de-next').textContent`));
 ok('年结面板收了', (await ev(`document.getElementById('de').classList.contains('hide')`)) === true);

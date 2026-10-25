@@ -212,7 +212,12 @@ html, body {
   font-size: .88em;
   line-height: 1.55;
   color: #ded3ba;
-  text-shadow: 0 1px 3px rgba(0,0,0,.85);
+  /* 四向描边而不是加底衬：底衬会撑高这一行（验收量过 h=22），
+     描边不动几何。原先只有单向 1px 弱阴影，压在画面下缘的浅色土路上
+     白天几乎看不见 —— 实测踩过 */
+  text-shadow: 0 1px 2px rgba(20,17,14,.95), 0 -1px 2px rgba(20,17,14,.95),
+               1px 0 2px rgba(20,17,14,.95), -1px 0 2px rgba(20,17,14,.95),
+               0 0 4px rgba(20,17,14,.8);
 }
 
 /* ---------------- 浮字 ---------------- */
@@ -663,7 +668,9 @@ html, body {
    那种毛病没法靠调宽度躲开，只能让这一行短到一定放得下 */
 #title .sl-d { font-size: 1em; color: #f3e9d2; }
 #title .sl-s { margin-top: .3em; font-size: .9em; color: #c9b489; }
-#title .sl-e { font-size: 1.1em; color: #8d8265; }
+/* 空着那一行原先 #8d8265：压在半透明的暗卡上几乎看不见，
+   实测标题屏上三格哪格有存档分辨不出来。提亮两档，字重跟上 */
+#title .sl-e { font-size: 1.1em; color: #b8ab8a; }
 #title .sl-bad { font-size: 1.02em; color: #c08a6a; }
 /* margin-top:auto 而不是固定值：按内容高度走，格里有四行信息、
    有一行、还是只有「空着」，按钮都落在同一条底线上 */

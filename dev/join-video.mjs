@@ -4,8 +4,9 @@
 import { execFileSync } from 'child_process';
 import { readdirSync, existsSync, statSync, rmSync } from 'fs';
 import path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FRAMES = path.join(ROOT, 'video', 'frames');
 const FFMPEG = 'C:\\Users\\19819\\AppData\\Local\\Microsoft\\WinGet\\Links\\ffmpeg.exe';
 const OUT = path.join(ROOT, 'video', '归隐-教学.mp4');
