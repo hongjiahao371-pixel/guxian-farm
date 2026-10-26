@@ -208,14 +208,14 @@ await clickCell(3, 3);
 ok('立秋把菊种下了', (await ev(`FG.state.plots[3][3].crop`)) === 'ju', '这畦 = ' + await ev(`FG.state.plots[3][3].crop`));
 // 每天浇一遍，连过 29 夜
 for (let i = 0; i < 29; i++) {
-  await ev(`(function(){var p=FG.state.plots[3][3]; p.wet=true; FG.state.min=FG.DAY.END-1;})()`);
+  await ev(`(function(){var p=FG.state.plots[3][3]; p.wet=true; FG.state.min=FG.DAY.END-1; FG.endDay();})()`);   // 夜游后天黑不再自动结算 —— 显式走
   await sleep(900);
   await ev(`FG.nextDay()`); await sleep(90);
 }
 const st29 = await ev(`FG.state.plots[3][3].stage`);
 ok('差一夜还没开', st29 < 30, '第 ' + (await ev(`FG.state.day`)) + ' 天，长了 ' + st29 + ' 天（' +
    (await ev(`FG.solarOf(FG.state.day).n`)) + '）');
-await ev(`(function(){var p=FG.state.plots[3][3]; p.wet=true; FG.state.min=FG.DAY.END-1;})()`);
+await ev(`(function(){var p=FG.state.plots[3][3]; p.wet=true; FG.state.min=FG.DAY.END-1; FG.endDay();})()`);   // 夜游后天黑不再自动结算 —— 显式走
 await sleep(900);
 await ev(`FG.nextDay()`); await sleep(150);
 ok('霜降这天开了', (await ev(`FG.solarOf(FG.state.day).n`)) === '霜降' && (await ev(`FG.state.plots[3][3].stage`)) >= 30,

@@ -78,6 +78,53 @@
      压在南山那张浅沙色的底图上，淡彩会没掉，1× 下来就剩一摊脏。
      非空时（chest 有件数）从缝里露一个角出来 ——
      站着不动的时候就能看出这箱子装没装东西，不用每次都开一遍。 */
+  /* 廊下躺椅：两根长竹条斜搭成靠背，四条短腿，中段两道横档。
+     竹的青压在墨线上，读得出是竹器不是柴火 */
+  I.recliner = function (ctx, x, y, s) {
+    ctx.save();
+    I.wash(ctx, x, y + s * 0.04, s * 0.62, s * 0.08, 'rgba(58,48,38,', 0.22);
+    // 座面：一根从后往前伸的长竹条（透视上是一条斜带）
+    I.brush(ctx, [[x - s * 0.26, y - s * 0.10], [x + s * 0.28, y - s * 0.02]], s * 0.075, s * 0.030, I.QING, 0.78);
+    // 靠背：斜上去的一根，搭在廊柱方向
+    I.brush(ctx, [[x - s * 0.26, y - s * 0.10], [x - s * 0.40, y - s * 0.44]], s * 0.062, s * 0.026, I.QING, 0.70);
+    // 腿：前后各一短竖
+    I.brush(ctx, [[x + s * 0.24, y - s * 0.02], [x + s * 0.27, y + s * 0.12]], s * 0.030, s * 0.014, I.INK, 0.62);
+    I.brush(ctx, [[x - s * 0.20, y - s * 0.06], [x - s * 0.22, y + s * 0.10]], s * 0.030, s * 0.014, I.INK, 0.62);
+    // 横档两道
+    I.brush(ctx, [[x - s * 0.14, y - s * 0.02], [x + s * 0.16, y + s * 0.02]], s * 0.020, s * 0.010, I.INK, 0.5);
+    I.brush(ctx, [[x - s * 0.12, y + s * 0.05], [x + s * 0.14, y + s * 0.08]], s * 0.020, s * 0.010, I.INK, 0.45);
+    // 枕头处一团软的
+    I.dot(ctx, x - s * 0.30, y - s * 0.16, s * 0.075, I.CLU, 0.7);
+    ctx.restore();
+  };
+
+  /* 院里石桌：一张圆桌面 + 一只石鼓凳。桌面用淡青的圆，
+     沿口一道墨线圈出厚度，桌腿一笔短柱 */
+  I.stoneTable = function (ctx, x, y, s) {
+    ctx.save();
+    I.wash(ctx, x, y + s * 0.10, s * 0.58, s * 0.08, 'rgba(58,48,38,', 0.22);
+    // 桌腿
+    I.brush(ctx, [[x, y - s * 0.10], [x, y + s * 0.08]], s * 0.085, s * 0.045, I.INK_SOFT, 0.8);
+    // 桌面（椭圆，压着腿顶）
+    ctx.beginPath();
+    ctx.ellipse(x, y - s * 0.16, s * 0.34, s * 0.13, 0, 0, Math.PI * 2);
+    ctx.fillStyle = I.QING + '0.66)';
+    ctx.fill();
+    ctx.strokeStyle = I.INK + '0.5)';
+    ctx.lineWidth = s * 0.022;
+    ctx.stroke();
+    // 桌上茶壶一笔（看不出来是什么也行，是「桌上搁着东西」就够）
+    I.dot(ctx, x + s * 0.06, y - s * 0.19, s * 0.045, I.INK, 0.75);
+    // 石鼓凳：矮胖一截，比桌面低一档、错开半步
+    var bx = x - s * 0.44, by = y + s * 0.04;
+    I.brush(ctx, [[bx, by - s * 0.10], [bx, by + s * 0.05]], s * 0.11, s * 0.055, I.INK_SOFT, 0.72);
+    ctx.beginPath();
+    ctx.ellipse(bx, by - s * 0.11, s * 0.085, s * 0.038, 0, 0, Math.PI * 2);
+    ctx.fillStyle = I.INK_SOFT + '0.6)';
+    ctx.fill();
+    ctx.restore();
+  };
+
   I.chest = function (ctx, x, y, s, chest) {
     // 宽高比要紧。第一版 w=s*0.86 / h=s*0.46 —— 又宽又扁，
     // 1× 下来读成院里一条长板凳而不是箱子。箱子要接近一个立方：

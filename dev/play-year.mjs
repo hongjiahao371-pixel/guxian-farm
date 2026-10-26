@@ -575,6 +575,8 @@ for (let day = 1; day <= DAYS; day++) {
   // 症状是日志里出现「出货6　进项 0」：出货在早上、钱在夜里，
   // 而这一列读的是昨天早上的钱。整张表的「进项」都晚一天。
   await ev(`(function(){ FG.state.min=FG.DAY.END-1; return 1})()`);
+  // 天黑不再自动结算（夜游改动）—— 显式走结算那一支
+  await ev(`FG.endDay()`);
   let end = null;
   for (let tap = 0; tap < 6; tap++) {
     await sleep(80);

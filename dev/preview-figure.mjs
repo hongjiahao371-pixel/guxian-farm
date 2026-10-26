@@ -94,6 +94,6 @@ await ev(`(()=>{
 })()`);
 await sleep(200);
 const s = await send('Page.captureScreenshot', { format: 'png', clip });
-writeFileSync(OUT + '\\figure.png', Buffer.from(s.data, 'base64'));
+writeFileSync(path.join(OUT, 'figure.png'), Buffer.from(s.data, 'base64'));
 console.log('已出 dev/_fig/figure.png  clip=', JSON.stringify(clip));
 ws.close(); chrome.kill();

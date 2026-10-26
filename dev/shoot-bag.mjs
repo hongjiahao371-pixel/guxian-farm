@@ -267,6 +267,7 @@ ok('放完之后箱里折的钱 = 行囊标的',
   (await ev(`FG.binWorth()`)) === ship.ship,
   `箱 ${await ev(`FG.binWorth()`)} / 账 ${ship.ship}`);
 await ev(`FG.state.min = FG.DAY.END - 1`);
+await ev(`FG.endDay()`);   // 天黑不再自动结算 —— 显式走结算
 await sleep(1900);
 const goldAfter = await ev(`FG.state.gold`);
 ok('行囊标的的出货额 = 实际到账',

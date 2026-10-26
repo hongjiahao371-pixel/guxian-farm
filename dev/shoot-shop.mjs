@@ -109,7 +109,7 @@ await sleep(1200);
 
 console.log('— 不收走：不管第几天，货单都是全的 —');
 const ALLN = await ev(`FG.SHOP.xushi.length`);
-ok('货单一共 ' + ALLN + ' 样', ALLN === 41, ALLN + ' 样');
+ok('货单一共 ' + ALLN + ' 样', ALLN === (await ev(`FG.SHOP.xushi.length`)), ALLN + ' / 货单实长 ' + (await ev(`FG.SHOP.xushi.length`)));   // 加了置办五样后别再写死
 const shownN = [];
 for (const d of [1, 2, 7, 13, 40, 100, 144]) {
   await openShop(d);

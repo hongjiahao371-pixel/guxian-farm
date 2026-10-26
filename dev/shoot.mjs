@@ -81,7 +81,7 @@ async function ev(expr) {
 }
 async function shot(name) {
   const s = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(OUT + '\\' + name, Buffer.from(s.data, 'base64'));
+  writeFileSync(path.join(OUT, name), Buffer.from(s.data, 'base64'));
 }
 /* 画布坐标 -> 屏幕坐标，再发真鼠标事件（不是 el.click()，那条路绕过了命中测试） */
 let clickDbg = false;

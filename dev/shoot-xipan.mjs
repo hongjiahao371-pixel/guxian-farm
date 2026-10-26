@@ -285,6 +285,7 @@ const inBin = await ev(`FG.binList().map(function (b) { return b.k + ':' + b.n; 
 ok('钓上来的东西进了箱', inBin.length > 0, inBin || '(箱是空的)');
 // 不直接调内部函数：把时钟推到日暮，走主循环里那条 endDay 路径
 await ev(`FG.state.min = FG.DAY.END - 1`);
+await ev(`FG.endDay()`);   // 夜游后天黑不再自动结算 —— 显式走
 await sleep(1800);
 ok('结算面板弹了', (await ev(`!document.getElementById('de').classList.contains('hide')`)) === true);
 const body = await ev(`document.querySelector('#de .body').textContent`);
@@ -323,6 +324,7 @@ const n2 = await ev(`window.__n`);
 await ev(`FG.gotoMap('xipan', [760, 800])`);
 await sleep(400);
 await ev(`FG.state.min = FG.DAY.END - 1`);
+await ev(`FG.endDay()`);   // 夜游后天黑不再自动结算 —— 显式走
 await sleep(1800);
 await ev(`FG.gotoMap('nanshan', [900, 800])`);
 await sleep(400);

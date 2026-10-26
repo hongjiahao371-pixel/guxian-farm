@@ -67,7 +67,7 @@ const ev = async e => {
 };
 async function shot(name) {
   const s = await send('Page.captureScreenshot', { format: 'png' });
-  writeFileSync(OUT + '\\' + name, Buffer.from(s.data, 'base64'));
+  writeFileSync(path.join(OUT, name), Buffer.from(s.data, 'base64'));
 }
 async function key(k) {
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, text: k.length === 1 ? k : undefined });

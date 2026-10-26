@@ -92,6 +92,7 @@ for (const day of [1, 2, 3]) {
   const morning = await snap();
   // 天黑结算
   await ev(`(function(){ FG.state.min=FG.DAY.END-1; return 1})()`);
+  await ev(`FG.endDay()`);   // 天黑不再自动结算 —— 显式走结算
   await sleep(60);
   await ev(`(function(){ var b=document.getElementById('de-next');
     if (b && !document.getElementById('de').classList.contains('hide')) b.click(); return 1})()`);

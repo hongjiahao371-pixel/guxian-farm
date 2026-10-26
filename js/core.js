@@ -233,6 +233,31 @@ window.FG = window.FG || {};
                'C4', _, _, _, _, _, _, _, 'G3', _, _, _, _, _, _, _]
       }
     };
+    /* 季节变奏：同一支曲子按季节换个说法 —— 秋天慢半拍、低两度，
+       冬天升三度但音符更稀，春夏天照原样。**确定性**：休止走步进下标
+       的哈希，不用 Math.random，刷新一百遍冬天还是同一支稀疏的曲子 */
+    const SEASON_PLAY = {
+      spring: { bpm: 1.00, shift: 0,  sparse: 0 },
+      summer: { bpm: 1.06, shift: 0,  sparse: 0 },
+      autumn: { bpm: 0.94, shift: -2, sparse: 0 },
+      winter: { bpm: 0.88, shift: 3,  sparse: 3 }   // 每 8 步丢 1 个主音
+    };
+    function seasonKey() {
+      try {
+        if (window.FG && FG.state && FG.seasonOf) return FG.seasonOf(FG.state.day).k;
+      } catch (e) { }
+      return 'spring';
+    }
+    function shiftNote(name, semi) {
+      if (!semi) return name;
+      const m = /^([A-G])(#|b)?(-?\d)$/.exec(name);
+      if (!m) return name;
+      let n = SEMI[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0) + semi;
+      const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      n = ((n % 12) + 12) % 12;
+      const abs = SEMI[m[1]] + (m[2] === '#' ? 1 : 0) + (Number(m[3]) + 1) * 12 + semi;
+      return NAMES[((abs % 12) + 12) % 12] + (Math.floor(abs / 12) - 1);
+    }
     let mGain = null, mTimer = 0, mStep = 0, mNext = 0, mName = '', mTrack = null;
     const MUSIC_VOL = 0.22;
 
@@ -254,15 +279,18 @@ window.FG = window.FG || {};
     }
     function mschedule() {
       if (!ctx || muted || !mTrack || !mGain) return;
-      const spb = 60 / mTrack.bpm / 2;            // 一个 8 分音符
+      const sp = SEASON_PLAY[seasonKey()] || SEASON_PLAY.spring;
+      const spb = 60 / (mTrack.bpm * sp.bpm) / 2; // 一个 8 分音符（乘季节速度）
       const L = mTrack.lead.length;
       while (mNext < ctx.currentTime + 0.4) {     // 预排 0.4s，setInterval 抖动也不会断音
         const i = mStep % L, t = mNext;
-        if (mTrack.lead[i]) mvoice(mTrack.lead[i], t, spb * 1.7, 'square', mTrack.vol * 0.34, 3200);
-        if (mTrack.bass[i]) mvoice(mTrack.bass[i], t, spb * 2.6, 'triangle', mTrack.vol * 0.40, 1400);
+        // 冬天的稀疏：哈希丢音，不是随机 —— 同一步永远同结果
+        const drop = sp.sparse && ((mStep * 7 + 3) % 8) < sp.sparse;
+        if (mTrack.lead[i] && !drop) mvoice(shiftNote(mTrack.lead[i], sp.shift), t, spb * 1.7, 'square', mTrack.vol * 0.34, 3200);
+        if (mTrack.bass[i]) mvoice(shiftNote(mTrack.bass[i], sp.shift), t, spb * 2.6, 'triangle', mTrack.vol * 0.40, 1400);
         if (i % 4 === 0 && mTrack.pad[i]) {
-          mvoice(mTrack.pad[i], t, spb * 3.6, 'sine', mTrack.vol * 0.20, 1100);
-          mvoice(mTrack.pad[i], t + spb * 2, spb * 2.4, 'sine', mTrack.vol * 0.14, 1100);
+          mvoice(shiftNote(mTrack.pad[i], sp.shift), t, spb * 3.6, 'sine', mTrack.vol * 0.20, 1100);
+          mvoice(shiftNote(mTrack.pad[i], sp.shift), t + spb * 2, spb * 2.4, 'sine', mTrack.vol * 0.14, 1100);
         }
         mNext += spb;
         mStep++;

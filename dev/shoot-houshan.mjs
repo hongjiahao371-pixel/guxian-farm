@@ -265,6 +265,7 @@ ok('再读一次不重复收句', (await ev(`Object.keys(FG.state.album).length`
 console.log('— 后山没有田也没有家，但天黑照样结算 —');
 const g2 = await ev(`FG.state.gold`);
 await ev(`FG.state.min = FG.DAY.END - 1`);
+await ev(`FG.endDay()`);   // 天黑不再自动结算 —— 显式走结算
 await sleep(1900);
 ok('天黑弹出结算', (await ev(`!document.getElementById('de').classList.contains('hide')`)) === true);
 const body = await ev(`document.querySelector('#de .body').textContent`);

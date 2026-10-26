@@ -117,7 +117,11 @@
     ended: false,
     started: false,
     todayEarned: 0,
-    todayWatered: 0
+    todayWatered: 0,
+    nightNoted: false,         // 今天说过「天黑了」没有（夜里不再催第二遍）
+    nightCastNoted: false,     // 今天说过「夜钓」那句没有
+    // 置办账本（墟市 kind:'amen' 那五样）。feast 记的是**摆过哪一年**
+    amen: null
   };
 
   function curMap() { return FG.mapOf(S.map); }
@@ -173,6 +177,7 @@
       // canGive 读不到就当 0，而那是「还没递过酒」，跟新档一个样，对的
       if (!S.jiuPts) S.jiuPts = {};
       questFix();
+      amenFix();
       buildFix();
       chestFix();
       keepFix();
@@ -384,7 +389,23 @@
         var add = Math.floor(acc);
         acc -= add;
         S.min += add;
-        if (S.min >= FG.DAY.END) { S.min = FG.DAY.END; endDay(true); }
+        // **天黑不再强制结算** —— 钟走到 21:00 就停在那儿，夜归玩家。
+        // 「带月荷锄归」本来就是这游戏自己的第三幕：夜里还能走、能钓夜鱼、
+        // 能看着月光下的田站一会儿；铺子收了、人回家了，这些夜里本来就关着。
+        // 翻日只走「归家睡下」那一条路。原先到点就弹结算卡，
+        // 实玩里两次把翻货单的人硬拽出去 —— 那是打卡下班，不是过日子。
+        // nightNoted 一天只说一遍天黑，不催第二遍（startDay 里清）
+        // 那句「天擦黑」放在 20:00（带月）而不是 22:00（熄灯）：
+        // 熄灯那刻收线要说话（浮漂不能悄悄消失），两个 toast 同帧会互相顶掉
+        if (S.min >= FG.DAY.NIGHT) {
+          if (!S.nightNoted) {
+            S.nightNoted = true;
+            toast('天擦黑了。夜里也走得，只是铺子收了、人都回家了。', 4200);
+          }
+        }
+        if (S.min >= FG.DAY.END) {
+          S.min = FG.DAY.END;
+        }
         if (Math.floor(S.min / 30) !== FG._lastShichen) { FG._lastShichen = Math.floor(S.min / 30); updateHUD(); }
         // 薄暮还在外头就收一句。去重交给 albumAdd，这里不用另记标志
         if (FG.SHEN(S.min) === '薄暮') albumAdd('duskOut');
@@ -1031,6 +1052,18 @@
     for (i = 0; i < FG.ROAD_LV.length; i++) o[FG.ROAD_LV[i]] = 0;
     S.road = o;
   }
+  /* 置办账本的修复。老档没有这本账就补一个空的；
+     feast 夹回合法年份（负数/字符串都是脏数据；记的是「哪一年摆过」，0 是还没摆过） */
+  function amenFix() {
+    if (!S.amen || typeof S.amen !== 'object') S.amen = { fence: 0, books: 0, chair: 0, table: 0, feast: 0 };
+    if (typeof S.amen.fence !== 'number' || S.amen.fence < 0) S.amen.fence = 0;
+    if (typeof S.amen.books !== 'number' || S.amen.books < 0) S.amen.books = 0;
+    if (typeof S.amen.chair !== 'number' || S.amen.chair < 0) S.amen.chair = 0;
+    if (typeof S.amen.table !== 'number' || S.amen.table < 0) S.amen.table = 0;
+    if (typeof S.amen.feast !== 'number' || S.amen.feast < 0) S.amen.feast = 0;
+  }
+  FG.amenFix = amenFix;
+
   function roadFix() {
     if (!S.road || typeof S.road !== 'object') roadInit();
     var i, k, v;
@@ -2430,7 +2463,13 @@
   function cast(f) {
     // 等待时间随机，鱼才不像闹钟；窗口长短等上钩了才算
     if (S.book) S.book.casts++;
-    S.fishing = { i: f.i, t: 0, wait: 1.0 + Math.random() * 2.8, win: 0, phase: 'wait', spot: f.spot };
+    // castAt：这竿是什么时候抛的。熄灯（22:00）会把**熄灯前**挂着的线收走
+    //（灯灭了看不清浮漂），但熄灯后再抛的是玩家自己选的夜钓 —— 不收
+    S.fishing = { i: f.i, t: 0, wait: 1.0 + Math.random() * 2.8, win: 0, phase: 'wait', spot: f.spot, castAt: S.min };
+    if (S.min >= FG.DAY.END && !S.nightCastNoted) {
+      S.nightCastNoted = true;
+      toast('夜里精神真大。夜里溪里另有两种鱼。', 3400);
+    }
     hint('浮漂稳住了　·　等它沉');
   }
 
@@ -2524,10 +2563,12 @@
     // 中间试过把判据挪到 isNight，**那还是 0 宽**：
     // 20:00 一到既出夜鱼、又被收线，正好撞在同一个点上。
     // 收线只能再往后推到熄灯 22:00，窗口才是 20:00—22:00
-    // 这两个小时（MIN_PER_SEC=3，约 40 真实秒），够抛两三竿。
+    // 这两个小时（MIN_PER_SEC=2，约 60 真实秒），够抛三四竿。
     // 代价是薄暮到带月那一段不再收线 —— 但那一段本来就不该收，
     // 溪里傍晚还是看得见浮漂的
-    if (S.min >= FG.DAY.END) {
+    // 夜游之后钟停在熄灯不再走 —— 这里只收**熄灯前**抛的线（原意象保留：
+    // 灯灭了看不清浮漂）；熄灯后新抛的竿是夜钓，照常等咬
+    if (S.min >= FG.DAY.END && (typeof f.castAt !== 'number' || f.castAt < FG.DAY.END)) {
       S.fishing = null;
       toast('灯要灭了，溪里看不清浮漂，把线收了。', 3200);
       return;
@@ -2732,6 +2773,8 @@
     S.todayWatered = 0;
     S.catchCount = 0;      // 结算里写的是「今日垂钓 N 尾」，得按天清零
     S.talkIdx = 0;
+    S.nightNoted = false;    // 新的一天，天黑那句要重新说
+    S.nightCastNoted = false;
     S.walkTo = null;
     S.touchGo = false;
     // 灶上今天还能做几口，是按「今天已经做了几口」数的。
@@ -2813,6 +2856,8 @@
     updateHUD();
   }
   FG.nextDay = function () { startDay(false); };
+  // 夜游改动后天黑不再自动结算 —— 验收与通玩 bot 显式走这一支
+  FG.endDay = function () { endDay(true); };
 
   /* ---------------- 绘制 ---------------- */
   // 硐里比地面上暗，而且越深越暗。整张压一层淡墨就行，不必每层出一张底图 ——
@@ -2822,9 +2867,24 @@
   // 写成函数是为了让验收能直接核「越深越暗」，而不是靠肉眼看两张截图
   function mineDim() { return 0.12 + (Math.max(1, S.mineFloor) - 1) * 0.036; }
 
+  /* 季节色调：二十四节气不该只活在 HUD 和文案里，山色要跟着走。
+     底图是六张固定手绘，重画不现实，就按季叠一层极淡的色：
+     春青、夏深绿、秋赭、冬蓝灰。**只压室外** —— 硐里本来就有
+     按层加深的暗，再叠色两层会互相打架；alpha 压在 0.06，
+     抬眼能觉出「换季了」，凑近看山还是那座山 */
+  function seasonTint() {
+    var sea = FG.seasonOf(S.day).k;
+    return { spring: 'rgba(96,150,86,', summer: 'rgba(118,158,58,',
+             autumn: 'rgba(198,130,52,', winter: 'rgba(104,124,154,' }[sea] || null;
+  }
+
   function render() {
     if (bgReady) { x.drawImage(bg, 0, 0); }
     else { x.fillStyle = '#e8e0cc'; x.fillRect(0, 0, W, H); }
+    if (bgReady && !inMine()) {
+      var st = seasonTint();
+      if (st) { x.fillStyle = st + '0.06)'; x.fillRect(0, 0, W, H); }
+    }
 
     if (inMine()) {
       x.save();
@@ -3005,6 +3065,16 @@
         // 跟人一样按脚下深度缩放：木箱搁在院里，
         // 玩家走到它跟前得看着变大一点才对得上
         I.chest(x, CHEST.at[0], CHEST.at[1], CHEST.unit * F.scaleAtY(CHEST.at[1]), S.chest);
+        // 院中置办的两件（躺椅/石桌）。画在人物之前：东西立在地上，
+        // 人走过去要站在它前面 —— 跟营造同一条远近规矩
+        amenFix();
+        if (curMap().id === 'nanshan') {
+          // 位置是量过的：都在田畦梯形（232..1420, 500..872）之外，
+          // 也不压木箱（368,620）/归家圈里的判定点 —— 躺椅在房右廊下，
+          // 石桌在西边花丛旁的院角，两件都只是**看得见**，不带交互
+          if (S.amen.chair) I.recliner(x, 180, 566, 150 * F.scaleAtY(566));
+          if (S.amen.table) I.stoneTable(x, 244, 828, 140 * F.scaleAtY(828));
+        }
       }
     });
     ppl.push({
@@ -3044,10 +3114,13 @@
       } else if (S.pendingSeed) {
         // 手上捏着种的时候，提示行只说这一件事。
         // 混着写「E 说话 / E 归家 / 点畦下种」等于把三个可选动作摆成一排，
-        // 玩家得自己挑，而 E 在这里是完全无关的
+        // 玩家得自己挑，而 E 在这里是完全无关的。
+        // **时节也得在这行上说** —— 原先只有点下去才知道「不是时节」，
+        // 玩家白白跑一趟田边。现在手上就告诉他「今日宜种 / 要等什么」
         var pc = C[FG.CROP_OF_SEED[S.pendingSeed]];
         hint(pc
-          ? ('捏着' + pc.name + '种　·　点一畦翻好的土　·　Tab 放下')
+          ? ('捏着' + pc.name + '种　·　点一畦翻好的土　·　Tab 放下'
+            + (FG.inTerms(S.day, pc.terms) ? '　·　今日宜种' : '　·　还没到时节，要等' + termHint(pc).replace('要等', '').replace('。', '')))
           : '这包种认不出来　·　Tab 打开行囊放下');
       } else {
         var n = nearNpc();
@@ -3189,7 +3262,10 @@
                 if (ex && ex.to === 'shidong' && mineShut()) hint('硐口封着　·　雷雨天');
                 else if (ex && ex.to === 'shidong' && S.gear.jue <= 0)
                   hint('下那道旧硐口　·　没有镐，下去也敲不动');
-                else hint(ex ? ('E　' + ex.label) : '');
+                // 夜游时段站在没东西可交互的地方，最后这句让给「回屋歇了」——
+                // 不然夜里的旷野上一声不吭，新玩家不知道这一天怎么翻篇
+                else hint(ex ? ('E　' + ex.label)
+                  : (S.min >= FG.DAY.END ? '天黑了　·　回屋歇了' : ''));
               }
             }
           }
@@ -3744,7 +3820,12 @@
         + '<br><i>' + it.from + '</i>　<i>墟市有更趁手的</i>';
       return;
     }
-    var tail = it.kind === 'seed' ? '　<i>点它，再点田畦</i>'
+    // 种子那行把时节一并说了：现在宜不宜，不宜的话等哪些节气。
+    // terms 在 CROPS 表上，货单这条只有 crop id —— 反查一张表，别再抄一份
+    var seedCrop = it.kind === 'seed' ? C[it.crop] : null;
+    var tail = it.kind === 'seed' ? '　<i>点它，再点田畦'
+      + (seedCrop && FG.inTerms(S.day, seedCrop.terms) ? '　·　今日宜种</i>'
+        : '　·　' + (seedCrop ? termHint(seedCrop).replace('。', '') : '') + '</i>')
       : (it.sell ? '　<i>按 O 放进箱子，天黑折 ' + it.sell + ' 钱一份</i>' : '');
     if (it.kind === 'made' && !it.sell) tail = '　<i>不卖钱，只能送人</i>';
     el.innerHTML = '<b>' + it.name + '</b>　×' + list[i].n +
@@ -4801,6 +4882,12 @@
       var dc = S.road[g.r] || 0;
       return { owned: dc >= g.lv, locked: !(dc >= g.lv) && dc !== g.lv - 1, why: '通好' };
     }
+    // 置办：一次性的是「有没有」；村宴是「今年摆过没有」（一年一回，明年再摆）
+    if (g.kind === 'amen') {
+      amenFix();
+      var owned2 = g.yearly ? (S.amen[g.a] === FG.yearOf(S.day)) : !!S.amen[g.a];
+      return { owned: owned2, locked: false, why: '置办' };
+    }
     // 种子没有「买不买得起」：它随时可买，也永远不会「已经是」
     return { owned: false, locked: false, why: '' };
   }
@@ -4811,6 +4898,7 @@
     if (g.kind === 'machine') return shopOwns(g).owned ? '已经有了' : (shopOwns(g).locked ? '得先有前一个' : '');
     if (g.kind === 'furn') return shopOwns(g).owned ? '已经收拾好了' : (shopOwns(g).locked ? '得先有前一个' : '');
     if (g.kind === 'road') return shopOwns(g).owned ? '路已经通好了' : (shopOwns(g).locked ? '得先有前一个' : '');
+    if (g.kind === 'amen') return shopOwns(g).owned ? (g.yearly ? '今年摆过了' : '已经置办了') : '';
     return '';
   }
 
@@ -4986,6 +5074,31 @@
       FG.audio.play('buy');
       toast(g.name + '铺好了。歇脚处那张清单上多了 '
         + (FG.ROAD[g.r].lv[g.lv - 1].legs - (g.lv > 1 ? FG.ROAD[g.r].lv[g.lv - 2].legs : 0)) + ' 处。', 3600);
+    } else if (g.kind === 'amen') {
+      // 置办（修篱笆/捐书/摆村宴/两件院中物件）。回报**不折算成产量**：
+      // 村里的人情涨一涨，院子看着齐整 —— 折算成收益的话，
+      // 「散财」就成了「投资」，跟这一栏的本意拧着
+      amenFix();
+      var owned3 = g.yearly ? (S.amen[g.a] === FG.yearOf(S.day)) : !!S.amen[g.a];
+      if (owned3) { toast(g.yearly ? '今年这场村宴摆过了。明年再请。' : '已经置办过了。'); return; }
+      if (S.gold < g.price) { toast('钱不够，还差 ' + (g.price - S.gold) + ' 钱。'); return; }
+      S.gold -= g.price;
+      S.amen[g.a] = g.yearly ? FG.yearOf(S.day) : 1;
+      FG.audio.play('buy');
+      // 村里的人情：修篱笆人人都看得见（+1），捐书和村宴更重（+2）。
+      // renAdd 直加不走「同一天一句话」的门 —— 送的是整份心意
+      var cheers = (g.a === 'fence') ? 1 : 2;
+      if (g.a !== 'chair' && g.a !== 'table') {
+        for (var pid in FG.NPCS) renAdd(pid, cheers);
+      }
+      var said = {
+        fence: '篱笆补好了。路过的人都说明年塌不了。',
+        books: '一箱书送到了村塾。娃娃们围着老先生认封皮上的字。',
+        chair: '躺椅摆在廊下了。午后眯一觉，就着田里的风。',
+        table: '石桌落在院角。傍晚喝一杯，正好看得见西山。',
+        feast: '流水席从晌午摆到天黑。全村都喝到了你的酒。'
+      }[g.a];
+      toast(said + (g.a !== 'chair' && g.a !== 'table' ? '　村里人人情都近了些。' : ''), 3800);
     } else if (g.kind === 'gear') {
       var cur = S.gear[g.gear] || 0;
       if (cur >= g.lv) { toast('你已经有' + g.name + '了。'); return; }
@@ -5121,6 +5234,7 @@
     // 狗这本账也一样：不清的话上一世的 dog.day 带进来，
     // 新局里狗几十天不叼东西；窝边那几份还成了白捡的开局礼
     S.dog = { day: 0, n: 0, k: null };
+    S.amen = { fence: 0, books: 0, chair: 0, table: 0, feast: 0 };   // 置办也是这一世的
     // 诗册和田地也得清。原以为「入山」是干净的入口，其实 init() 早就把
     // S 填过一遍了，而上面那些赋值只改了几个字段 —— 上一世的句子和
     // 上一世的田原样留着。玩家的路径很朴素：玩几天，按 F5 回到标题，
@@ -5327,6 +5441,7 @@
     S.jiu = 0; S.made = {}; S.bin = {}; S.binQ = 0; S.chest = {}; S.cookN = 0; S.favor = {};
     S.jiuPts = {};
     S.dog = { day: 0, n: 0, k: null };
+    S.amen = { fence: 0, books: 0, chair: 0, table: 0, feast: 0 };
     // 硐里敲开的石头也一样。留着的话重开之后玩家进硐发现四层已经见底，
     // 而手上一个镐都没有 —— 那不是「接着玩」，是「没得玩了」
     S.ore = {}; S.rock = {}; S.mineFloor = 0; S.mineDeep = 0;
