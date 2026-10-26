@@ -2873,7 +2873,7 @@
   // 锄：一道从肩后扫到脚前的挥弧，末端几粒土星子飞起来落回去
   I.workHoe = function (ctx, x, y, s, p) {
     var a = Math.sin(p * Math.PI);                       // 起手-落下-收，弧线中段最实
-    I.brush(ctx, [[x - s * 0.30, y - s * (0.42 - p * 0.30)], [x + s * 0.10, y - s * (0.10 - p * 0.05)]],
+    I.brush(ctx, [[x - s * 0.26, y - s * (0.30 - p * 0.22)], [x + s * 0.10, y - s * (0.08 - p * 0.04)]],
            s * 0.035, s * 0.014, I.INK, 0.55 * a);
     I.brush(ctx, [[x - s * 0.10, y - s * 0.06], [x + s * 0.22, y - s * 0.02]],
            s * 0.05 * a + s * 0.012, s * 0.02 * a, I.INK, 0.4 * a);
@@ -2888,18 +2888,21 @@
   // 浇水：瓢口一道下落的水弧（淡青），落点一圈洇湿，尾段水珠收干
   I.workWater = function (ctx, x, y, s, p) {
     var a = Math.sin(p * Math.PI);
+    // 双笔：一道墨线压形，一道青晕铺水 —— 只用青的话在水色底图上看不见
     I.brush(ctx, [[x - s * 0.08, y - s * 0.40], [x + s * 0.14, y - s * 0.05]],
-           s * 0.055 * a + s * 0.012, s * 0.026 * a, I.QING, 0.62 * a);
+           s * 0.030 * a + s * 0.008, s * 0.016 * a, I.INK, 0.55 * a);
+    I.brush(ctx, [[x - s * 0.05, y - s * 0.36], [x + s * 0.12, y - s * 0.06]],
+           s * 0.050 * a + s * 0.010, s * 0.022 * a, I.QING, 0.62 * a);
     for (var i = 0; i < 7; i++) {
       var d = (i * 219.7) % 100 / 100;
       var py = y - s * 0.32 + (p * 1.4 - d * 0.3) * s * 0.28;
-      if (py > y - s * 0.04 && p < 0.92) I.dot(ctx, x + s * (0.02 + d * 0.20), py, s * 0.020 + s * 0.008 * d, I.QING, 0.62 * a);
+      if (py > y - s * 0.04 && p < 0.92) I.dot(ctx, x + s * (0.02 + d * 0.20), py, s * 0.020 + s * 0.008 * d, I.INK, 0.5 * a);
     }
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(x + s * 0.08, y - s * 0.015, s * (0.12 + p * 0.12), s * 0.038, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = I.QING + (0.40 * a) + ')';
-    ctx.lineWidth = s * 0.016;
+    ctx.strokeStyle = I.INK + (0.32 * a) + ')';
+    ctx.lineWidth = s * 0.014;
     ctx.stroke();
     ctx.restore();
   };

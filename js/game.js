@@ -1522,7 +1522,10 @@
      就在远处目标格播完，人还在原地 —— 活干完了人没到，看着像隔空施法 */
   function startWork(k, col, row, crop) {
     var cc = F.cellCenter(col, row);
-    var w = { k: k, t: 0, dur: 0.9, x: cc[0], y: cc[1], crop: crop };
+    // 特效锚在**人物脚前**而不是格中心 —— 格中心在人身后上方，
+    // 挥锄弧和水花全落在他身后，肉眼基本读不到（实拍验证过）。
+    // 脚前偏移让动作发生在他面前的地里，正好也是玩家视线落点
+    var w = { k: k, t: 0, dur: 0.9, x: S.player.x + 46, y: S.player.y - 10, crop: crop };
     var d = Math.abs(S.player.x - cc[0]) + Math.abs(S.player.y - cc[1]);
     if (d < 220) S.work = w;
     else { S.workPending = w; S.walkTo = clampWalk(cc[0], cc[1]); S.touchGo = false; }
