@@ -384,7 +384,7 @@
 
   I.figH = 1.06;   // 贴图高 / u，与 I.farmer 里斗笠顶 Y(1.04~1.10) 对齐
 
-  I.drawFig = function (ctx, id, cx, baseY, u, alpha) {
+  I.drawFig = function (ctx, id, cx, baseY, u, alpha, lean) {
     var im = I.figs[id];
     if (!im || !im.width) { I.farmer(ctx, cx, baseY, u, I.INK, 0); return; }
     var h = u * I.figH;
@@ -400,6 +400,8 @@
 
     ctx.save();
     if (alpha !== undefined && alpha < 1) ctx.globalAlpha = alpha;
+    // lean：绕脚底的小幅前倾（劳动姿态用，走路不用）—— 不转影子
+    if (lean) { ctx.translate(cx, baseY); ctx.rotate(lean); ctx.translate(-cx, -baseY); }
     ctx.drawImage(im, cx - w / 2, baseY - h, w, h);
     ctx.restore();
   };
@@ -2843,21 +2845,89 @@
     I.wash(ctx, cx, cy, across * 0.62, along * 0.72,
            wet ? 'rgba(58,42,30,' : 'rgba(96,72,52,', wet ? 0.34 : 0.20, rot);
 
-    // 垄沟：横向的墨线，**方向就摆成水平**。
-    // 这里原来是对的，我一度改成「平行于梯形左右边」—— 那反倒是错的：
-    // Radon 投影量过格子内部的底图垄纹，纹理最强在垂直方向（强度 19.28，
-    // 次高才 16.15），即**垄纹本身就是 0° 水平**。
-    // 看着像斜的是**田块的田埂轮廓**（实测左右边约 42°），
-    // 把这两样搞混就会去追一个不存在的方向问题。
-    // 真正跟土地对不上的是上面那团 wash：旋转角写死 0 的椭圆切进斜梯形，
-    // 边界一半斜一半平，深色块的边跟斜的田埂不平行。
-    var n = 3;
+    // 垄沟：走过三次弯路（平行左右边 → 水平 → 沿进深），2026-10-26 作者实玩
+    // 圈出红框后的最终裁决不是「角度」而是「融合」—— 原先三条又细又密又
+    // 均匀的线，压在手绘的粗垄旁边读成另一种纹理。现在的画法：
+    // 两道**又粗又深**的沟（间距对齐底图近景垄距约 1/3 格），再撒一层
+    // 碎土星子 —— 「翻过」读作「锄松的土」，跟手绘垄融成一块地
+    var n = 2;
     for (var c = 0; c < n; c++) {
-      var v = (c + 0.5) / n;
-      I.brush(ctx, [I.quadAt(quad, 0.08, v), I.quadAt(quad, 0.92, v)],
-              along * 0.045, along * 0.045, I.INK, wet ? 0.34 : 0.22);
+      var v = 0.34 + c * 0.35;
+      I.brush(ctx, [I.quadAt(quad, 0.07, v), I.quadAt(quad, 0.93, v)],
+              along * 0.095, along * 0.095, I.INK, wet ? 0.40 : 0.30);
+    }
+    for (var i = 0; i < 7; i++) {
+      var d1 = (i * 137.5) % 100 / 100, d2 = (i * 61.8) % 100 / 100;
+      var pt = I.quadAt(quad, 0.15 + d1 * 0.7, 0.12 + d2 * 0.76);
+      I.dot(ctx, pt[0], pt[1], along * (0.018 + d2 * 0.022), I.INK, wet ? 0.30 : 0.24);
     }
     ctx.restore();
+  };
+
+  /* ---------------- 劳动特效 ----------------
+     翻土 / 下种 / 浇水 / 收获各给一小段程序化的水墨特效（0.9s，进度驱动、
+     无随机 —— 同一进度永远同一画面）。人物只有一张站姿贴图，姿态层面
+     用「前倾 + 快频起伏」表达干活，特效负责把「在干哪一件事」说清楚。
+     p ∈ [0,1]，s 是场景比例（跟 I.drawFig 的 u 同源）。 */
+
+  // 锄：一道从肩后扫到脚前的挥弧，末端几粒土星子飞起来落回去
+  I.workHoe = function (ctx, x, y, s, p) {
+    var a = Math.sin(p * Math.PI);                       // 起手-落下-收，弧线中段最实
+    I.brush(ctx, [[x - s * 0.30, y - s * (0.42 - p * 0.30)], [x + s * 0.10, y - s * (0.10 - p * 0.05)]],
+           s * 0.035, s * 0.014, I.INK, 0.55 * a);
+    I.brush(ctx, [[x - s * 0.10, y - s * 0.06], [x + s * 0.22, y - s * 0.02]],
+           s * 0.05 * a + s * 0.012, s * 0.02 * a, I.INK, 0.4 * a);
+    for (var i = 0; i < 5; i++) {
+      var d = (i * 137.5) % 100 / 100;                   // 确定性散布
+      var px = x + s * (0.12 + d * 0.3) * (p - 0.35) * 2.2;
+      var py = y - s * (0.05 + d * 0.12) * Math.sin(Math.min(1, p * 1.6) * Math.PI);
+      if (p > 0.25) I.dot(ctx, px, py, s * (0.016 + d * 0.012) * (1 - p * 0.5), I.INK, 0.5 * a);
+    }
+  };
+
+  // 浇水：瓢口一道下落的水弧（淡青），落点一圈洇湿，尾段水珠收干
+  I.workWater = function (ctx, x, y, s, p) {
+    var a = Math.sin(p * Math.PI);
+    I.brush(ctx, [[x - s * 0.08, y - s * 0.40], [x + s * 0.14, y - s * 0.05]],
+           s * 0.055 * a + s * 0.012, s * 0.026 * a, I.QING, 0.62 * a);
+    for (var i = 0; i < 7; i++) {
+      var d = (i * 219.7) % 100 / 100;
+      var py = y - s * 0.32 + (p * 1.4 - d * 0.3) * s * 0.28;
+      if (py > y - s * 0.04 && p < 0.92) I.dot(ctx, x + s * (0.02 + d * 0.20), py, s * 0.020 + s * 0.008 * d, I.QING, 0.62 * a);
+    }
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(x + s * 0.08, y - s * 0.015, s * (0.12 + p * 0.12), s * 0.038, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = I.QING + (0.40 * a) + ')';
+    ctx.lineWidth = s * 0.016;
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  // 下种：手前一把种子扇形撒出去，落地成几个小点
+  I.workSow = function (ctx, x, y, s, p) {
+    var a = Math.sin(Math.min(1, p * 1.3) * Math.PI);
+    for (var i = 0; i < 6; i++) {
+      var d = (i * 173.3) % 100 / 100;
+      var spread = (d - 0.5) * 0.5;
+      var px = x + s * (0.05 + p * 0.30) * (0.6 + d * 0.8);
+      var py = y - s * (0.34 - p * 0.26) - Math.abs(spread) * s * 0.10;
+      if (p < 0.85) I.dot(ctx, px + spread * s * 0.3, py, s * (0.020 + d * 0.010), I.INK, 0.62 * a);
+      else I.dot(ctx, px + spread * s * 0.3, y - s * 0.02, s * 0.015, I.INK, 0.40 * a);
+    }
+  };
+
+  // 收获：一束作物从地里升到手上，尾段整束淡出（进了篮）
+  I.workHarvest = function (ctx, x, y, s, p, tint) {
+    var a = Math.sin(p * Math.PI);
+    var rise = (1 - Math.pow(1 - p, 2)) * s * 0.30;
+    var col = tint || I.QING;
+    I.brush(ctx, [[x - s * 0.05, y - s * 0.02], [x - s * 0.02, y - s * 0.06 - rise]],
+           s * 0.030, s * 0.014, col, 0.65 * a);
+    I.brush(ctx, [[x + s * 0.06, y - s * 0.02], [x + s * 0.04, y - s * 0.08 - rise]],
+           s * 0.026, s * 0.012, col, 0.55 * a);
+    I.dot(ctx, x, y - s * 0.12 - rise, s * 0.040, col, 0.5 * a);
+    I.dot(ctx, x, y - s * 0.02, s * 0.05, I.INK, 0.25 * a);
   };
 
   /* 四边形内的点：u 沿进深（上边→下边），v 沿横跨（左边→右边）。

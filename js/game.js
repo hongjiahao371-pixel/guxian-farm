@@ -120,6 +120,8 @@
     todayWatered: 0,
     nightNoted: false,         // 今天说过「天黑了」没有（夜里不再催第二遍）
     nightCastNoted: false,     // 今天说过「夜钓」那句没有
+    work: null,                // 劳动特效：{k, t, dur, x, y, crop}，0.9s 播完即清
+    workPending: null,         // 人还没走到地边的挂起演出（到位转正成 work）
     // 置办账本（墟市 kind:'amen' 那五样）。feast 记的是**摆过哪一年**
     amen: null
   };
@@ -411,6 +413,7 @@
         if (FG.SHEN(S.min) === '薄暮') albumAdd('duskOut');
       }
     }
+    if (S.work) { S.work.t += dt; if (S.work.t >= S.work.dur) S.work = null; }
     movePlayer(dt);
     stepFishing(dt);
     /* 背景音乐：换图和时辰推进都靠**这一处**。
@@ -440,6 +443,11 @@
       var d = Math.sqrt(dx * dx + dy * dy);
       if (d < 12) {
         S.walkTo = null;
+        // 走到地边了，把挂着的劳动演出转正开播
+        if (S.workPending) {
+          var wpn = S.workPending; S.workPending = null;
+          if (Math.abs(p.x - wpn.x) + Math.abs(p.y - wpn.y) < 220) S.work = wpn;
+        }
         // 走到了，做那件事。**触屏那一下的尾巴就在这里** ——
         // 原来到这儿就结束了，人站在门口、站在人旁边，而没人再管：
         // 触屏上于是只有走路和锄地，说不了话、出不了门、回不了家。
@@ -1508,6 +1516,18 @@
   // 翻土 / 浇水：先看这一块里真能动的有几畦，一畦都不动就说明白被什么挡住了；
   // 然后一次扣够体力再一起做。中途体力不够而只做了一半，
   // 玩家的田会留下一半翻了一半没翻，两边都说不通
+  /* 劳动演出调度：数据（地翻没翻、种没种）在点击瞬间就生效，
+     但**演出**跟着人走 —— 人离得近就地开播，离得远就先记着（workPending），
+     等他走到地边（movePlayer 到位处转正）再播。原来特效在点击瞬间
+     就在远处目标格播完，人还在原地 —— 活干完了人没到，看着像隔空施法 */
+  function startWork(k, col, row, crop) {
+    var cc = F.cellCenter(col, row);
+    var w = { k: k, t: 0, dur: 0.9, x: cc[0], y: cc[1], crop: crop };
+    var d = Math.abs(S.player.x - cc[0]) + Math.abs(S.player.y - cc[1]);
+    if (d < 220) S.work = w;
+    else { S.workPending = w; S.walkTo = clampWalk(cc[0], cc[1]); S.touchGo = false; }
+  }
+
   function workArea(k, col, row) {
     var cells = gearCells(k, col, row);
     if (!cells.length) return;
@@ -1563,6 +1583,8 @@
     if (k === 'chu') albumAdd('firstTill');
     FG.audio.play(k === 'chu' ? 'hoe' : 'water');
     toast((k === 'chu' ? '翻开' : '浇过') + todo.length + ' 畦。');
+    // 劳动特效以**点的那个格**为中心（不是整片中心）—— 挥锄的土星子该落在玩家看着的地方
+    startWork(k === 'chu' ? 'till' : 'water', col, row);
     // 手艺按**真动到的畦数**记，不按下了几下。铁锄一下九畦就是九点，
     // 木锄一下一畦是一点 —— 记的是活儿，不是按键次数
     skillAdd('geng', k === 'chu' ? 'till' : 'water', todo.length);
@@ -2089,6 +2111,7 @@
     if (!pl.crop || pl.stage < C[pl.crop].days) return;
     if (!spend(1)) return;
     var k = pl.crop;
+    startWork('harvest', col, row, k);
     S.bag[k] = (S.bag[k] || 0) + 1;
     bookAdd('crops', k);
     albumAdd('firstHarvest');
@@ -3080,8 +3103,30 @@
     ppl.push({
       y: S.player.y, draw: function () {
         var u = 150 * F.scaleAtY(S.player.y);
-        var bob = S.player.walk > 0 ? Math.sin(S.player.walk) * 2.2 : 0;
-        I.drawFig(x, 'farmer', S.player.x, S.player.y + bob, u);
+        // 劳动姿态：玩家就在动作点旁边（200 内）时，走路 bob 换成干活的
+        // 快频起伏 + 绕脚底的小幅前倾 —— 贴图只有一张站姿，姿态用变换说
+        var working = S.work && Math.abs(S.player.x - S.work.x) + Math.abs(S.player.y - S.work.y) < 200;
+        var bob;
+        if (working) {
+          bob = Math.sin(S.work.t * 16) * 2.6 * Math.sin(Math.min(1, S.work.t / S.work.dur) * Math.PI);
+          I.drawFig(x, 'farmer', S.player.x, S.player.y + bob, u, undefined, -0.07 + Math.sin(S.work.t * 16 + 1.2) * 0.035);
+        } else {
+          bob = S.player.walk > 0 ? Math.sin(S.player.walk) * 2.2 : 0;
+          I.drawFig(x, 'farmer', S.player.x, S.player.y + bob, u);
+        }
+        // 劳动特效画在**人物之后**：水弧和挥锄从人身上扫过去才看得见 ——
+        // 画在人后面会被贴图整个挡住（实测浇水特效全程隐身）
+        if (S.work && S.started && !S.ended) {
+          var wk = S.work, wp = Math.min(1, wk.t / wk.dur);
+          var ws2 = 150 * F.scaleAtY(wk.y);
+          if (wk.k === 'till') I.workHoe(x, wk.x, wk.y, ws2, wp);
+          else if (wk.k === 'water') I.workWater(x, wk.x, wk.y, ws2, wp);
+          else if (wk.k === 'sow') I.workSow(x, wk.x, wk.y, ws2, wp);
+          else if (wk.k === 'harvest') {
+            var tintMap = { dou: I.QING, su: I.HUA, shu: I.HUA, ji: I.ZHE, ju: I.CLU };
+            I.workHarvest(x, wk.x, wk.y, ws2, wp, tintMap[wk.crop]);
+          }
+        }
       }
     });
     ppl.sort(function (a, b) { return a.y - b.y; });
@@ -3542,6 +3587,7 @@
     if ((S.seeds[crop] || 0) <= 0) { toast('没有' + C[crop].name + '种了，去墟市买些。'); S.stam += 1; return; }
     S.seeds[crop]--;
     pl.crop = crop; pl.stage = 0;
+    startWork('sow', col, row);
     // 捏在手上的种用掉了就把手空出来，不然手上一直显示着「豆种 ×0」
     if ((S.seeds[crop] || 0) <= 0) S.pendingSeed = null;
     albumAdd('firstSow');
