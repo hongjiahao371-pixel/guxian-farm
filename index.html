@@ -272,6 +272,10 @@
     };
     var de = document.getElementById('de');
     document.getElementById('de-next').onclick = function () {
+      // **面板收着的时候这个按钮在 DOM 里仍然存在**（只有 class 挡显示），
+      // 任何盲触（脚本/未来代码）都会无声触发一次翻日 —— 跳过整夜结算。
+      // 真玩家的指针点不到 display:none，这道闸是给代码留的
+      if (de.classList.contains('hide')) return;
       de.classList.add('hide');
       // 年结面板（data-year 标记，startDay 挂上）：日子已经落在第二年第 1 天，
       // 点下去只是收面板，**不能再翻日** —— 再翻一次立春整天就跳过去了。
