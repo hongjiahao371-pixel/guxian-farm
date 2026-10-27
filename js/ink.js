@@ -406,6 +406,40 @@
     ctx.restore();
   };
 
+  /* ---------------- 纸偶劳动姿态 ----------------
+     贴图只有一张站姿（扛锄），劳动时用「裁腰纸偶」让它真的弯下去：
+     腰部截成上下两半，下半（腿）原地不动，上半（躯干+头+肩上的锄）
+     绕髋点向前折 —— 肩上的锄跟着甩向地面，正好就是挥锄落地的动作。
+     bend 是前倾弧度（≈0.55 时上身上段压到髋前），face 定朝向（±1）。
+     比整体 rotate 强在这就是「弯腰」，而不是「站歪了」。 */
+  I.drawFigWork = function (ctx, id, cx, baseY, u, bend, face) {
+    var im = I.figs[id];
+    if (!im || !im.width) { I.farmer(ctx, cx, baseY, u, I.INK, 0); return; }
+    var h = u * I.figH;
+    var w = h * (im.width / im.height);
+    var cut = 0.52;                        // 腰线：上 52%（躯干头锄）折，下 48%（腿）留
+    var hipY = baseY - h + h * cut;
+
+    // 接地影（跟 I.drawFig 同款）
+    ctx.save();
+    ctx.fillStyle = 'rgba(58,50,40,0.17)';
+    ctx.beginPath();
+    ctx.ellipse(cx + u * 0.03, baseY + u * 0.008, u * 0.21, u * 0.045, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 腿：原位
+    ctx.drawImage(im, 0, Math.round(im.height * cut), im.width, im.height - Math.round(im.height * cut),
+                  cx - w / 2, hipY, w, h * (1 - cut));
+
+    // 上身：绕髋点折向前。折的时候略向动作侧挪一点，重心才对
+    ctx.save();
+    ctx.translate(cx + (face || 1) * w * 0.06, hipY);
+    ctx.rotate((face || 1) * bend);
+    ctx.drawImage(im, 0, 0, im.width, Math.round(im.height * cut), -w / 2, -h * cut, w, h * cut);
+    ctx.restore();
+  };
+
   /* ---------------- 溪畔 ----------------
      浮漂：待饵时轻轻浮着，一咬钩就猛地沉下去。深色小点 + 一圈水纹就够，
      不用画得精细 —— 它在 100 多像素外，玩家的注意力在"什么时候按 E"。 */
@@ -2955,5 +2989,9 @@
     ctx.stroke();
     ctx.restore();
   };
+
+  // 验收用：离屏把人物画出来量（「量画出来的东西，不是读代码猜的」）
+  FG.drawFigSprite = I.drawFig;
+  FG.drawFigWork = I.drawFigWork;
 
 })(window.FG = window.FG || {});

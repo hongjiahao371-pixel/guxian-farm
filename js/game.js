@@ -3110,15 +3110,17 @@
     ppl.push({
       y: S.player.y, draw: function () {
         var u = 150 * F.scaleAtY(S.player.y);
-        // 劳动姿态：玩家就在动作点旁边（200 内）时，走路 bob 换成干活的
-        // 快频起伏 + 绕脚底的小幅前倾 —— 贴图只有一张站姿，姿态用变换说
-        var working = S.work && Math.abs(S.player.x - S.work.x) + Math.abs(S.player.y - S.work.y) < 200;
-        var bob;
+        // 劳动姿态：纸偶弯腰 —— 上身绕髋部真的折向地块，肩上的锄跟着甩向地面。
+        // 0.9s 里折两次（两次落锄），朝向自动倒向动作点那一侧。
+        // 走路 bob 只在不干活时用
+        var working = S.work && Math.abs(S.player.x - S.work.x) + Math.abs(S.player.y - S.work.y) < 220;
         if (working) {
-          bob = Math.sin(S.work.t * 16) * 2.6 * Math.sin(Math.min(1, S.work.t / S.work.dur) * Math.PI);
-          I.drawFig(x, 'farmer', S.player.x, S.player.y + bob, u, undefined, -0.07 + Math.sin(S.work.t * 16 + 1.2) * 0.035);
+          var wp = Math.min(1, S.work.t / S.work.dur);
+          var bend = 0.62 * Math.pow(Math.abs(Math.sin(wp * Math.PI * 2)), 0.7);   // 两次落锄，峰在 1/4 与 3/4
+          var face = (S.work.x >= S.player.x) ? 1 : -1;
+          I.drawFigWork(x, 'farmer', S.player.x, S.player.y, u, bend, face);
         } else {
-          bob = S.player.walk > 0 ? Math.sin(S.player.walk) * 2.2 : 0;
+          var bob = S.player.walk > 0 ? Math.sin(S.player.walk) * 2.2 : 0;
           I.drawFig(x, 'farmer', S.player.x, S.player.y + bob, u);
         }
         // 劳动特效画在**人物之后**：水弧和挥锄从人身上扫过去才看得见 ——
