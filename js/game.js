@@ -3116,9 +3116,7 @@
         var working = S.work && Math.abs(S.player.x - S.work.x) + Math.abs(S.player.y - S.work.y) < 220;
         if (working) {
           var wp = Math.min(1, S.work.t / S.work.dur);
-          var bend = 0.62 * Math.pow(Math.abs(Math.sin(wp * Math.PI * 2)), 0.7);   // 两次落锄，峰在 1/4 与 3/4
-          var face = (S.work.x >= S.player.x) ? 1 : -1;
-          I.drawFigWork(x, 'farmer', S.player.x, S.player.y, u, bend, face);
+          I.drawFigWork(x, 'farmer', S.player.x, S.player.y, u, wp);   // 躬身两次（峰 1/4、3/4）
         } else {
           var bob = S.player.walk > 0 ? Math.sin(S.player.walk) * 2.2 : 0;
           I.drawFig(x, 'farmer', S.player.x, S.player.y + bob, u);

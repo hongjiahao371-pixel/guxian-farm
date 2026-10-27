@@ -406,37 +406,40 @@
     ctx.restore();
   };
 
-  /* ---------------- 纸偶劳动姿态 ----------------
-     贴图只有一张站姿（扛锄），劳动时用「裁腰纸偶」让它真的弯下去：
-     腰部截成上下两半，下半（腿）原地不动，上半（躯干+头+肩上的锄）
-     绕髋点向前折 —— 肩上的锄跟着甩向地面，正好就是挥锄落地的动作。
-     bend 是前倾弧度（≈0.55 时上身上段压到髋前），face 定朝向（±1）。
-     比整体 rotate 强在这就是「弯腰」，而不是「站歪了」。 */
-  I.drawFigWork = function (ctx, id, cx, baseY, u, bend, face) {
+  /* ---------------- 劳动躬身姿态 ----------------
+     贴图是**正面对镜头**的站姿（扛锄）。侧向折腰在正视图里读成「往旁边歪」，
+     正确的劳动表达是**向镜头躬身**：上身压扁、下沉、肩展 ——
+     头和肩上的锄跟着往下磕，配合地面的挥锄弧/水弧就是完整的劳动动作。
+     p 是劳动进度 0..1，0.9s 里躬身两次（峰在 1/4 与 3/4），
+     strike 曲线 |sin|^0.7 让下压带落锤感。s 是场景比例（同 I.drawFig 的 u）。 */
+  I.drawFigWork = function (ctx, id, cx, baseY, u, p) {
     var im = I.figs[id];
     if (!im || !im.width) { I.farmer(ctx, cx, baseY, u, I.INK, 0); return; }
     var h = u * I.figH;
     var w = h * (im.width / im.height);
-    var cut = 0.52;                        // 腰线：上 52%（躯干头锄）折，下 48%（腿）留
-    var hipY = baseY - h + h * cut;
+    var strike = Math.pow(Math.abs(Math.sin(p * Math.PI * 2)), 0.7);
+    var cf = 0.45;                       // 髋线：上 45%（躯干头臂锄）躬，下 55%（腿）留
+    var squashY = 1 - 0.26 * strike;     // 上身纵向压扁（向镜头躬下去）
+    var squashX = 1 + 0.12 * strike;     // 肩宽展开（躬身的前近感）
+    var hipY = baseY - h * (1 - cf) + h * cf * 0.26 * strike;   // 髋线随躬身微微下沉
 
-    // 接地影（跟 I.drawFig 同款）
+    // 接地影（躬身时影子跟着略放大——人俯下来占地更大）
     ctx.save();
     ctx.fillStyle = 'rgba(58,50,40,0.17)';
     ctx.beginPath();
-    ctx.ellipse(cx + u * 0.03, baseY + u * 0.008, u * 0.21, u * 0.045, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + u * 0.03, baseY + u * 0.008, u * (0.21 + 0.05 * strike), u * 0.045, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
     // 腿：原位
-    ctx.drawImage(im, 0, Math.round(im.height * cut), im.width, im.height - Math.round(im.height * cut),
-                  cx - w / 2, hipY, w, h * (1 - cut));
+    ctx.drawImage(im, 0, Math.round(im.height * (1 - cf)), im.width, Math.round(im.height * (1 - cf)),
+                  cx - w / 2, baseY - h * (1 - cf), w, h * (1 - cf));
 
-    // 上身：绕髋点折向前。折的时候略向动作侧挪一点，重心才对
+    // 上身：压扁 + 下沉 + 展肩，绕髋线变换
     ctx.save();
-    ctx.translate(cx + (face || 1) * w * 0.06, hipY);
-    ctx.rotate((face || 1) * bend);
-    ctx.drawImage(im, 0, 0, im.width, Math.round(im.height * cut), -w / 2, -h * cut, w, h * cut);
+    ctx.translate(cx, hipY);
+    ctx.scale(squashX, squashY);
+    ctx.drawImage(im, 0, 0, im.width, Math.round(im.height * cf), -w / 2, -h * cf, w, h * cf);
     ctx.restore();
   };
 
