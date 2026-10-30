@@ -3116,7 +3116,8 @@
         var working = S.work && Math.abs(S.player.x - S.work.x) + Math.abs(S.player.y - S.work.y) < 220;
         if (working) {
           var wp = Math.min(1, S.work.t / S.work.dur);
-          I.drawFigWork(x, 'farmer', S.player.x, S.player.y, u, wp);   // 躬身两次（峰 1/4、3/4）
+          var face = (S.work.x >= S.player.x) ? 1 : -1;   // 折向动作点那一侧
+          I.drawFigWork(x, 'farmer', S.player.x, S.player.y, u, wp, face);
         } else {
           var bob = S.player.walk > 0 ? Math.sin(S.player.walk) * 2.2 : 0;
           I.drawFig(x, 'farmer', S.player.x, S.player.y + bob, u);

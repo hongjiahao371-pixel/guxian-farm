@@ -412,22 +412,22 @@
      头和肩上的锄跟着往下磕，配合地面的挥锄弧/水弧就是完整的劳动动作。
      p 是劳动进度 0..1，0.9s 里躬身两次（峰在 1/4 与 3/4），
      strike 曲线 |sin|^0.7 让下压带落锤感。s 是场景比例（同 I.drawFig 的 u）。 */
-  I.drawFigWork = function (ctx, id, cx, baseY, u, p) {
+  I.drawFigWork = function (ctx, id, cx, baseY, u, p, face) {
     var im = I.figs[id];
     if (!im || !im.width) { I.farmer(ctx, cx, baseY, u, I.INK, 0); return; }
     var h = u * I.figH;
     var w = h * (im.width / im.height);
     var strike = Math.pow(Math.abs(Math.sin(p * Math.PI * 2)), 0.7);
-    var cf = 0.45;                       // 髋线：上 45%（躯干头臂锄）躬，下 55%（腿）留
-    var squashY = 1 - 0.26 * strike;     // 上身纵向压扁（向镜头躬下去）
-    var squashX = 1 + 0.12 * strike;     // 肩宽展开（躬身的前近感）
-    var hipY = baseY - h * (1 - cf) + h * cf * 0.26 * strike;   // 髋线随躬身微微下沉
+    var f = face || 1;                   // 折向动作点一侧（±1）
+    var cf = 0.45;
+    var shear = 0.48;                    // 上身向动作侧的剪切折腰（离线扫过 0.18/0.32/0.48，
+    var squashY = 1 - 0.20 * strike;     // 0.48「深劈」作者实拍裁定最像挥锄）
+    var hipY = baseY - h * (1 - cf) + h * cf * 0.22 * strike;
 
-    // 接地影（躬身时影子跟着略放大——人俯下来占地更大）
     ctx.save();
     ctx.fillStyle = 'rgba(58,50,40,0.17)';
     ctx.beginPath();
-    ctx.ellipse(cx + u * 0.03, baseY + u * 0.008, u * (0.21 + 0.05 * strike), u * 0.045, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + u * 0.03 * f, baseY + u * 0.008, u * (0.21 + 0.05 * strike), u * 0.045, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
@@ -435,10 +435,10 @@
     ctx.drawImage(im, 0, Math.round(im.height * (1 - cf)), im.width, Math.round(im.height * (1 - cf)),
                   cx - w / 2, baseY - h * (1 - cf), w, h * (1 - cf));
 
-    // 上身：压扁 + 下沉 + 展肩，绕髋线变换
+    // 上身：向动作侧剪切折腰 + 压扁下沉，肩上的锄甩向动作侧（举锄/落锄）
     ctx.save();
     ctx.translate(cx, hipY);
-    ctx.scale(squashX, squashY);
+    ctx.transform(1, 0, f * shear * strike, squashY, 0, 0);
     ctx.drawImage(im, 0, 0, im.width, Math.round(im.height * cf), -w / 2, -h * cf, w, h * cf);
     ctx.restore();
   };
